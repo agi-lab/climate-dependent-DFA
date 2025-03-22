@@ -10,11 +10,11 @@ Climate change is expected to have significant long-term effects on the physical
 
 The proposed framework has three key features: (1) it captures the long-term impact of climate change on both assets and liabilities by considering physical and economic dimensions within an interconnected structure; (2) it addresses the uncertainty of climate impacts using stochastic simulations within climate scenario analysis, supporting actuarial applications; and (3) it is tailored to the unique characteristics of the general insurance sector.
 
-This repository contains the results presented in our paper, ``Dynamic Financial Analysis (DFA) of General Insurers under Climate Change." All code used to generate the results can be found in the Rmarkdown file: `DFA_model_final.Rmd`.
+This repository contains the results presented in our paper, "Dynamic Financial Analysis (DFA) of General Insurers under Climate Change." 
 
 ## Code overview
 
-The Rmarkdown file seeks to reproduce the key results in the paper ``Dynamic Financial Analysis (DFA) of General Insurers under Climate Change", which contains the following sections that need to be run in the order specified: 
+All code used to generate the results can be found in the Rmarkdown file: `DFA_model_final.Rmd`,  which contains the following sections that need to be run in the order specified: 
 
 - **Loading required packages**: Load the required packages used in the paper.
 - **Files and data path**: Define the file paths of all the data sources used in the paper. Those data sources are all stored in the `Data` folder. Unless a new data source is used, users do not need to change anything here. 
@@ -26,3 +26,7 @@ The Rmarkdown file seeks to reproduce the key results in the paper ``Dynamic Fin
     - All graphs shown in Section 3.2 in the paper are plotted in **Presentations of simulation results**. 
     
 - **Section 3.3 Risk and return measures**: This section presents the results shown in Section 3.3 in the paper.
+
+## Data overview
+
+Due to the large file size of the data used, we are unable to upload it to Github. However, users can obtain all the data used in the paper from the Dropbox link [here](https://www.dropbox.com/scl/fo/7zva73raqce08phx2iorw/AB8hZsBbdVbEGrIf9i5jigw?rlkey=4x670mfk5j97gplde6vfslp34&st=60b8xd79&dl=0). Once the `Data` folder is downloaded and put into the same folder as `DFA codes.Rproj` and `DFA_model_final.Rmd`, the RMarkdown file `DFA_model_final.Rmd` can be run. 
