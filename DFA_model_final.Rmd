@@ -66,8 +66,8 @@ Enter the file paths of economic and financial data here:
 ```{r Paths for economic and financial data}
 pop_dat_path <- "Data/Economic/World_pop.xlsx" ## Historical population data path
 GDP_dat_path <- "Data/Economic/AU-GDP-LCU.xlsx" ## Historical GDP data path
-GDP_projections_dat_path <- "Data/SSP_scenarios.csv" ## GDP projections data path
-Pop_projections_dat_path <- "Data/AU_population_projections.xlsx" ## Population projections data path
+GDP_projections_dat_path <- "Data/Economic/SSP_scenarios.csv" ## GDP projections data path
+Pop_projections_dat_path <- "Data/Economic/AU_population_projections.xlsx" ## Population projections data path
 Consumption_dat_path <- "Data/Economic/AU_Consumption_LCU.xlsx" ## Consumption data path
 CPI_dat_path <- "Data/Economic/AU_inflation_640101.xlsx" ## CPI data path
 Interest_dat_path_1 <- "Data/Economic/Australian_cash_rate_data.xls"  ## Enter the data path for interest rates (2011 and before)
@@ -85,7 +85,7 @@ Enter the file paths of hazard data here:
 
 ```{r Paths for hazard data}
 ICA_dat_path <- "Data/Hazards loss/ICA-Historical-Normalised-Catastrophe-August-2023.xlsx" ## CAT loss data path
-EM_dat_path <- "Data/EM_DAT_AU.xlsx" ## EM-DAT loss data path
+EM_dat_path <- "Data/Hazards loss/EM_DAT_AU.xlsx" ## EM-DAT loss data path
 ```
 
 Enter the file paths of historical climate data here: 
@@ -130,7 +130,7 @@ Enter file path for all market statistics:
 
 ```{r Path for all market statistics}
 GI_dev_stats_input <- "Data/Market statistics/General insurance claims development statistics database December 2022.xlsx" ## Enter the file path for claims development statistics from APRA
-GI_fins_stats_input  <- "Data/Annual general insurance institution-level statistics database March 2005 to June 2023.xlsx"  ## Enter the file path for institution-level financial statistics from APRA
+GI_fins_stats_input  <- "Data/Market statistics/Annual general insurance institution-level statistics database March 2005 to June 2023.xlsx"  ## Enter the file path for institution-level financial statistics from APRA
 GI_perf_data_path <- "Data/Market statistics/Quarterly general insurance performance statistics database December 2002 to June 2023.xlsx" ## Enter the file path for quarterly GI performance statistics from APRA
 ```
 
