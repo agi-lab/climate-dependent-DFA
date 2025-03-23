@@ -1,9 +1,12 @@
 # climate-dependent-DFA
 
 ## Table of Contents
+
 - [Overview](#Overview)
-- [Code overview](#Code overview)
-- [Data overview](#Data overview)
+- [Code overview](#Code-overview)
+- [Data overview](#Data-overview)
+- [Authors](#Authors)
+- [Contact](#Contact)
 
 ## Overview
 
@@ -42,4 +45,15 @@ The main data folders used are outlined below:
 - `Equity return`: Contains the pseudo All-Ordinaries Shares total returns series and the financial statements of a representative oil and gas producer. Due to licensing restrictions, we are unable to provide the actual Total Returns series of the All-Ordinaries Shares Index and the financial statements of Woodside Energy Limited from FactSet. Users are encouraged to obtain this data directly from FactSet.  
 - `Hazards loss`: Includes the ICA and EM-DAT datasets on catastrophe insurance losses in Australia.  
 - `Precipitations`, `FWI`, `SST and MSLP`, `Near-surface temperature`, and `Air temperature`: Contain historical observations of precipitation, fire weather index, sea-surface temperature, mean sea-level pressure, near-surface temperature, and air temperature at the grid cell level across Australia (or nearby ocean areas).  
-- `CMIP6_ensemble_precipitation`, `CMIP6_ensemble_SST`, `CMIP6_ensemble_MSLP`, `CMIP6_ensemble_near_surface_temperature`, and `CMIP6_ensemble_air_temperature`: Contain CMIP6 ensemble projections of the corresponding climate variables.  
+- `CMIP6_ensemble_precipitation`, `CMIP6_ensemble_SST`, `CMIP6_ensemble_MSLP`, `CMIP6_ensemble_near_surface_temperature`, and `CMIP6_ensemble_air_temperature`: Contain CMIP6 ensemble projections of the corresponding climate variables.
+
+  ## Authors
+
+  - Benjamin Avanzi
+  - Yanfeng (Jim) Li
+  - Greg Taylor
+  - Bernard Wong
+
+  ## Contact
+
+  For any questions or further information, please contact lyf1998130@126.com.
