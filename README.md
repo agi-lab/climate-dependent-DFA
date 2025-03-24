@@ -20,6 +20,7 @@ This repository contains the results presented in our paper, "Dynamic Financial 
 
 All code used to generate the results can be found in the Rmarkdown file: `DFA_model_final.Rmd`,  which contains the following sections that need to be run in the order specified: 
 
+- Before running the Rmarkdown file, please ensure `knitr` and `rmarkdown` packages are installed. 
 - **Loading required packages**: Load the required packages used in the paper.
 - **Files and data path**: Define the file paths of all the data sources used in the paper. Those data sources are all stored in the `Data` folder. Unless a new data source is used, users do not need to change anything here. 
 - **Define functions to be used**: This section defines all the functions used in the paper. 
