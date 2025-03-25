@@ -1496,7 +1496,7 @@ To explore the impact of duration of extreme fire weather on bushfire risk, we a
 - Number of days with extreme fire weather (`fwixd`): annual number of days above the threshold defined as the $95^{th}$ percentile of the FWI over the reference period.
 
 ```{r Transform the FWI nc data in reference period to data frame format}
-FWI_ref_data <- rbind(FWI_40_49_data, FWI_50_59_data, FWI_60_65_data ) %>% rename(Lat = x, Lon = y)
+if(clean_data_required == T){FWI_ref_data <- read.csv("Data/FWI/FWI_ref_data.csv")} else{FWI_ref_data <- rbind(FWI_40_49_data, FWI_50_59_data, FWI_60_65_data ) %>% rename(Lat = x, Lon = y)}
 ```
 
 Calculate the $95^{th}$ percentile of the FWI over the reference period:
