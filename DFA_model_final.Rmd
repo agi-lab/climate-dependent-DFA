@@ -48,6 +48,11 @@ pacman::p_load(
 ```
 
 
+Note: If the `rgdal` package (used for processing spatial data) is not installed before running this script, please set         `clean_data_required <- TRUE` in the setting below. 
+
+```{r Indicate whether clean data is required (for rgdal package)}
+clean_data_required <- T
+```
 
 
 # Files and data path
@@ -92,7 +97,7 @@ Enter the file paths of historical climate data here:
 
 ```{r Path for historical climate data, warning=FALSE}
 Prep_hist_dat_path <- "Data/Precipitations/era5-x0.25_timeseries_pr,rx1day,rx5day_timeseries_annual_1950-2022_mean_historical_era5_x0.25_mean.xlsx" ## Data path for historical precipitation data
-australia_shape <- readOGR("Data/AUS_2021_AUST_GDA2020.shp") ## Enter the shape file for Australia
+australia_shape <- if(clean_data_required == T){NULL}else{readOGR("Data/AUS_2021_AUST_GDA2020.shp")} ## Enter the shape file for Australia
 ## Enter the data path for fire weather index for each historical period: 
 filenames_FWI <- list.files("Data/FWI", pattern="*.nc", full.names=TRUE) # Enter the path folder for the fire weather index
 filenames_Sea <- list.files("Data/SST and MSLP/SST_MSLP_ERA5", pattern="*.nc", full.names=TRUE) # Enter the path folder for the sea-surface temperature and MSLP
@@ -1166,12 +1171,24 @@ ERA5_hist_SST_mm_data <- rbindlist(ERA5_hist_SST_mm_list)
 ############################################################
 ## Near-surface temperature and air temperature: 
 ############################################################
-tas_ERA5_hist_dat <- transform_nc_tas_mm_func(australia_shape, nc_tas_data_ERA5_hist) %>%
-    rename(NS_temperature = Temperature)
+
+if(clean_data_required == T){tas_ERA5_hist_dat <- read.csv("Data/Near-surface temperature/tas_ERA5_hist_dat.csv")}else{tas_ERA5_hist_dat <- transform_nc_tas_mm_func(australia_shape, nc_tas_data_ERA5_hist) %>%
+    rename(NS_temperature = Temperature)}
 ## Get the annual average temperature data:
 Temp_hist_dat_ERA5 <- tas_ERA5_hist_dat %>% group_by(Year) %>% summarise(Temperature= mean(NS_temperature))
-ta_ERA5_hist_dat <- transform_nc_tas_mm_func(australia_shape, nc_ta_data_ERA5_hist) %>% rename(Air_temperature = Temperature) %>% filter(Year >= 1950 & Year <= 2023)
+
+if(clean_data_required == T){ta_ERA5_hist_dat <- read.csv("Data/Air temperature/ta_ERA5_hist_dat.csv")} else{ta_ERA5_hist_dat <- transform_nc_tas_mm_func(australia_shape, nc_ta_data_ERA5_hist) %>% rename(Air_temperature = Temperature) %>% filter(Year >= 1950 & Year <= 2023)}
 ```
+
+```{r}
+if(clean_data_required == T){tas_ERA5_hist_dat <- read.csv("Data/Near-surface temperature/tas_ERA5_hist_dat.csv")}else{tas_ERA5_hist_dat <- transform_nc_tas_mm_func(australia_shape, nc_tas_data_ERA5_hist) %>%
+    rename(NS_temperature = Temperature)}
+## Get the annual average temperature data:
+Temp_hist_dat_ERA5 <- tas_ERA5_hist_dat %>% group_by(Year) %>% summarise(Temperature= mean(NS_temperature))
+
+if(clean_data_required == T){ta_ERA5_hist_dat <- read.csv("Data/Air temperature/ta_ERA5_hist_dat.csv")} else{ta_ERA5_hist_dat <- transform_nc_tas_mm_func(australia_shape, nc_ta_data_ERA5_hist) %>% rename(Air_temperature = Temperature) %>% filter(Year >= 1950 & Year <= 2023)}
+```
+
 
 ## Financial data:
 
@@ -1371,20 +1388,18 @@ modelsummary(list("Model 1" = glm_Flood_sev_1, "Model 2" = glm_Flood_sev_2, "Mod
 Transform the FWI data from `nc` to `data frame` format: 
 
 ```{r Transform the FWI nc data to data frame format}
-FWI_40_49_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_40_49)
-FWI_50_59_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_50_59)
-FWI_60_65_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_60_65)
-
-FWI_66_75_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_66_75)
-FWI_76_87_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_76_87)
-FWI_85_95_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_85_95)
-FWI_96_05_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_96_05)
-FWI_06_15_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_06_15)
-FWI_16_22_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_16_22)
-```
-
-```{r Combine the historical FWI data}
-FWI_hist_data <- rbind(FWI_40_49_data, FWI_50_59_data, FWI_60_65_data, FWI_66_75_data, FWI_76_87_data, FWI_85_95_data, FWI_96_05_data, FWI_06_15_data, FWI_16_22_data) %>% rename(Lat = x, Lon = y)
+if(clean_data_required == T){FWI_hist_data <- read.csv("Data/FWI/FWI_hist_data.csv")} else{
+    FWI_40_49_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_40_49)
+    FWI_50_59_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_50_59)
+    FWI_60_65_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_60_65)
+    FWI_66_75_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_66_75)
+    FWI_76_87_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_76_87)
+    FWI_85_95_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_85_95)
+    FWI_96_05_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_96_05)
+    FWI_06_15_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_06_15)
+    FWI_16_22_data <- transform_nc_FWI_func(australia_shape, nc_data_FWI_16_22)
+    FWI_hist_data <- rbind(FWI_40_49_data, FWI_50_59_data, FWI_60_65_data, FWI_66_75_data, FWI_76_87_data, FWI_85_95_data, FWI_96_05_data, FWI_06_15_data, FWI_16_22_data) %>% rename(Lat = x, Lon = y)
+}
 ```
 
 
@@ -1558,7 +1573,7 @@ Check the data coverage:
 ```{r Check the data coverage of MSLP and SST}
 ERA5_hist_SST <- brick(filenames_Sea[1], varname = "sst")
 SST_dat <- as.data.frame(ERA5_hist_SST, xy = TRUE) %>% filter(x>=Lon_cyc_range[1] & x<=Lon_cyc_range[2]) %>% filter(y>=Lat_cyc_range[1] & y<=Lat_cyc_range[2])
-#pdf("/Users/jimli/Documents/DFA codes/Plotting/Climate/SST_AU_basin.pdf")
+#pdf("Plotting/Climate/SST_AU_basin.pdf")
 ## Plot SST:
 ggplot(SST_dat, aes(x, y, fill = X2006.01.01)) + 
   geom_raster() + 
@@ -2010,7 +2025,7 @@ tw_other_0 <- gam(Non_CAT_other_2022/Exposure_other ~ 1, data = GI_Ultimate_Loss
 To extrapolate the exposure data to the future projection period, we calibrate the relationship between risk exposure and population level: 
 
 ```{r Explore the relationship between exposure and population}
-#pdf("/Users/jimli/Documents/DFA codes/Plotting/Liabilities/Exposure_vs_Population.pdf")
+#pdf("Plotting/Liabilities/Exposure_vs_Population.pdf")
 GI_exposure_pop_data <- GI_development_statistics_PropertyandMotor_Exposure %>% rename(Year = `Accident/underwriting year`) %>% left_join(AU_pop, by = "Year")
 GI_other_exposure_pop_data <- GI_Ultimate_Losses_other %>% left_join(AU_pop, by = "Year")
 ```
@@ -5299,7 +5314,7 @@ rownames(mean_CAGR_allScenarios) = h_list
 ```
 
 ```{r Plot of mean CAGR under different scenarios}
-#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/MeanGACR.pdf")
+#pdf("Plotting/Surplus/MeanGACR.pdf")
 # Create pretty tick marks for the y-axis
 y_breaks <- pretty(c(0, max(as.vector(mean_CAGR_allScenarios))))
 
