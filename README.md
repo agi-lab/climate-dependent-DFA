@@ -42,7 +42,7 @@ Please note that we are in the process of uploading the data to Zenodo, and the 
 
 Once the `Data` folder is downloaded, place it in the same directory as `DFA codes.Rproj` and `DFA_model_final.Rmd`. After this setup, users can run the RMarkdown file `DFA_model_final.Rmd` without further configuration.  
 
-The main data folders and the corredsponding data sources used are outlined below:
+The main data folders and the corredsponding data sources used are outlined in the table below. 
 
 - `Economic`: Contains historical data on macroeconomic variables (e.g., GDP, interest rates, and inflation rates) and projections of GDP, population, and oil and gas production under each SSP scenario; the detailed data sources are listed below:
 - `Equity return`: Contains the pseudo All-Ordinaries Shares total returns series and the financial statements of a representative oil and gas producer. Due to licensing restrictions, we are unable to provide the actual Total Returns series of the All-Ordinaries Shares Index and the financial statements of Woodside Energy Limited from FactSet. Users are encouraged to obtain this data directly from FactSet.  
@@ -64,8 +64,11 @@ The main data folders and the corredsponding data sources used are outlined belo
 |          |`OECD_Gas_SSP.xlsx` and `OECD_Oil_SSP.xlsx`|Projections of oil and gas production under each SSP scenarios in OECD countries|Downloaded from [IIASA SSP database](https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&page=welcome) at 18 March 2024|
 |Equity return|`All-Ordinaries-Yearly-pseudo.xlsx`|Pseudo All-Ordinaries Shares total returns series between 1992 and 2023|Original data is not provided due to licensing restrictions; users can download the original version from [FactSet](https://www.factset.com/)| 
 |             |`Woodside_Financials_pseudo.xlsx`|Pseudo financial statements from a oil and gas producer (Woodside) between 2014 and 2023|Original data is not provided due to licensing restrictions; users can download the original version from [FactSet](https://www.factset.com/). Alternatively, users can hand-collect the relevant data for calculation based on the published financial statements from [Woodside Energy](https://www.woodside.com/investors/reports-investor-briefings)|
-
-
+|Hazards loss|`ICA-Historical-Normalised-Catastrophe-August-2023.xlsx`|Historical records of insured losses from natural disasters in Australia between 1967 and 2023|Downloaded from [Insurance Council of Australia](https://insurancecouncil.com.au/industry-members/data-hub/) at 27 August 2023|
+|            |`EM_DAT_AU.xlsx`|Historical records of both insured losses and total economic damages from natural disasters in Australia between 1985 and 2023|[EM-DAT database](https://public.emdat.be/data)|
+|Precipitations|`era5-x0.25_timeseries_pr,rx1day,rx5day_timeseries_annual_1950-2022_mean_historical_era5_x0.25_mean.xlsx`|ERA5 reanalysis data of historical precipitation information in Australia between 1950 and 2022|Originated from [Copernicus Climate Change Service](https://climate.copernicus.eu/);cleansed version downloaded from [World Bank Climate Change Knowledge Portal](https://climateknowledgeportal.worldbank.org/download-data) at 29 April 2024|
+|FWI|`FWI_1940_1949.nc`,..., `FWI_2016_2022.nc`|Historical Fire Weather Index (FWI) in Australia constructed based on ERA5 reanalysis data between 1940 and 2022|Downloaded from [Copernicus Climate Change Service](https://climate.copernicus.eu/) at 3 May 2024|
+|   |`fwixx_hurs_part1`,...,`fwixx_hurs_part7`|Projections and historical backcasts of FWI statistics in Australia from an ensemble of CMIP6 model|Downloaded from: |
 
   ## Authors
 
