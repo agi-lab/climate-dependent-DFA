@@ -51,7 +51,7 @@ The main data folders and the corredsponding data sources used are outlined in t
 - `CMIP6_ensemble_precipitation`, `CMIP6_ensemble_SST`, `CMIP6_ensemble_MSLP`, `CMIP6_ensemble_near_surface_temperature`, and `CMIP6_ensemble_air_temperature`: Contain CMIP6 ensemble projections of the corresponding climate variables.
 
 
-| Data categories (Folder name)| File names | <div style="width:290px">Descriptions</div>|Download sources|
+| Data categories (Folder name)| File names | <div style="width:500px">Descriptions</div>|Download sources|
 |-|-|-|-|
 | Economic |`World_pop.xlsx` | World population data by countries| [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
 |          |`AU-GDP-LCU.xlsx`|Historical Australian GDP at annual interval between 1960 and 2022|[World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
