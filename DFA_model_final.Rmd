@@ -43,7 +43,7 @@ pacman::p_load(
   mgcv, gamlss, fitdistrplus, actuar, kableExtra, tweedie, statmod, Ecfun, 
   scatterplot3d, gratia, pracma, aTSA, ncdf4, raster, rgdal, sf, corrplot, 
   quantreg, wordcloud, tm, scales, stringr, modelsummary, coda, 
-  plotly, GDPuc, colorspace, Rmpfr, cvar, VGAM, data.table
+  plotly, GDPuc, colorspace, Rmpfr, cvar, VGAM, data.table, openxlsx
 )
 ```
 
@@ -78,7 +78,7 @@ CPI_dat_path <- "Data/Economic/AU_inflation_640101.xlsx" ## CPI data path
 Interest_dat_path_1 <- "Data/Economic/Australian_cash_rate_data.xls"  ## Enter the data path for interest rates (2011 and before)
 Interest_dat_path_2 <- "Data/Economic/Australian_cash_rate_data_2011_2023.xls" ## Enter the data path for interest rates (after 2011)
 potential_growth_dat_path <- "Data/Economic/Potential-growth-database.xlsx" ## Enter the data path for potential growth
-stock_dat_path <- if(Factset_subscription == T){"Data/Equity return/All-Ordinaries-Factset-Monthly.xlsx"} else{"Data/Equity return/All-Ordinaries-Monthly-pseudo.xlsx"} ## Enter data path for historical series of All-Ordinaries share
+stock_dat_path <- if(Factset_subscription == T){"Data/Equity return/All-Ordinaries-Factset-Monthly.xlsx"} else{"Data/Equity return/All-Ordinaries-Yearly-pseudo.xlsx"} ## Enter data path for historical series of All-Ordinaries share
 corporate_earnings_path <- "Data/Economic/AU_corporate_earnings.xlsx" ## Enter data path for Australian corporate earnings
 gas_production_dat_path <- "Data/Economic/OECD_Gas_SSP.xlsx" ## Enter data path for planned gas production
 oil_production_dat_path <- "Data/Economic/OECD_Oil_SSP.xlsx" ## Enter data path for planned oil production
@@ -1192,16 +1192,19 @@ if(clean_data_required == T){ta_ERA5_hist_dat <- read.csv("Data/Air temperature/
 
 ## Financial data:
 
+
 ```{r Import of financial data, message=FALSE, warning=FALSE}
 ############################################################
 ## Total returns index for All-Ordinaries Share
 ############################################################
-TR_all_ord_shares_yy_data <- read_excel(stock_dat_path, sheet = "Price History", skip = 2) %>% dplyr::select(Date, `Total Return (Gross, Unhedged)`) %>% mutate(Year = year(Date), Month = month(Date)) %>% rename(Total_index = `Total Return (Gross, Unhedged)`) %>% dplyr::select(Year, Month, Total_index) %>%
+TR_all_ord_shares_yy_data <- if(Factset_subscription == T){read_excel(stock_dat_path, sheet = "Price History", skip = 2) %>% dplyr::select(Date, `Total Return (Gross, Unhedged)`) %>% mutate(Year = year(Date), Month = month(Date)) %>% rename(Total_index = `Total Return (Gross, Unhedged)`) %>% dplyr::select(Year, Month, Total_index) %>%
     group_by(Year, Month) %>%
     summarise(Total_index = last(Total_index)) %>% ## Find the price index at each month end
     filter(Month == 12) %>% left_join(AU_interest_rates, by = c("Year", "Month")) %>% ungroup() %>%
     mutate(Total_return_raw = Total_index/lag(Total_index)-1) %>%
-    mutate(Total_return = Total_index/lag(Total_index)-1-Short_rates) %>% drop_na()
+    mutate(Total_return = Total_index/lag(Total_index)-1-Short_rates) %>% drop_na()} else{
+        read_excel(stock_dat_path)
+    }
 ## Join with real GDP and consumption data: 
 TR_all_ord_shares_yy_data_1 <- left_join(TR_all_ord_shares_yy_data, AU_GDP_annual, by = "Year")
 AU_consumption_real$Year = as.numeric(AU_consumption_real$Year)
@@ -2078,6 +2081,7 @@ We then calibrate the operating profit growth and the total return model:
 
 - The coefficient attached to operating profit growth is positive and statistically significant, supporting our previous assumption on the relationship between operating profit growth and the consumption growth.
 - The calibrated parameter are also shown in Table 3.3 in Section 3 of the paper.
+- Note: if pseudo data is used, the calibrated coefficients will not be the same as the one shown in the paper. 
 
 ```{r Calibrate the operating profit growth and total return model}
 lm_OP_consumption_growth <- lm(OP_growth ~ Consumption_growth, data = TR_all_OP_ord_shares_yy_data)
@@ -2086,6 +2090,8 @@ lm_OP_TR <- lm(Total_return ~ OP_growth, data = TR_all_OP_ord_shares_yy_data, su
 summary(lm_OP_consumption_growth)
 summary(lm_OP_TR)
 ```
+
+
 
 ### Calibration of transition stress on brown stocks
 
@@ -3435,6 +3441,16 @@ abline(h = Total_damage_scalar_mean, lty = 2, col = "red")
 
 Perform the simulations for both physical risk and transition risk based on method outlined in the paper: 
 
+```{r Assign the true values of calibrated coefficients}
+## If pseudo data is used, the calibrated coefficients of the equity return model will be different to the one shown in the paper
+## To ensure alignment with the simulation results shown in the paper, the values of coefficients are hard-coded here
+scalar_impact_WDS_EBIT <- 1.768 ## EBIT scalar for brown production reduction
+sigma_TR <- 0.1026 ## Volatility of the excess equity returns
+beta_OP_TR <- 0.04672 ## Sensitivity of total returns to operating profit growth
+intercept_OP_TR <- 0.05795 ## Intercept of the total returns model
+```
+
+
 ```{r Simulated the equity return based on the corporate earnings channels}
 equity_TR_excess_adj_OP_list <- list()
 equity_TR_excess_adj_OP_brown_list <- list()
@@ -3468,7 +3484,7 @@ for(i in 1:n.sims){
     ## Derive the total equity returns:
     ### Simulate the random shocks:
     epsilon_op <- rnorm(forecast_horizon, mean = 0, sd = summary(lm_OP_consumption_growth)$sigma)
-    epsilon_TR <- rnorm(forecast_horizon, mean = 0, sd = summary(lm_OP_TR)$sigma)
+    epsilon_TR <- rnorm(forecast_horizon, mean = 0, sd = sigma_TR)
     
     ### Simulate the operating profit growth:
     #### Derive the change in operating profit for the general sector:
@@ -3477,14 +3493,14 @@ for(i in 1:n.sims){
     OP_brown <- OP + Brown_production_change*scalar_impact_WDS_EBIT
     ### Simulate the total excess returns:
     #### General sector:
-    TR <- pmax(lm_OP_TR$coefficients[1] + lm_OP_TR$coefficients[2] * OP + epsilon_TR,-1)
+    TR <- pmax(intercept_OP_TR + beta_OP_TR * OP + epsilon_TR,-1)
     TR_cum <- cumprod(1 + TR) - 1
     #### Brown sector:
-    TR_brown <- pmax(lm_OP_TR$coefficients[1] + lm_OP_TR$coefficients[2] * OP_brown + epsilon_TR,-1)
+    TR_brown <- pmax(intercept_OP_TR + beta_OP_TR * OP_brown + epsilon_TR,-1)
     TR_brown_cum <- cumprod(1 + TR_brown) - 1
     ### Simulate the baseline operating profit growth and excess total equity: 
     OP_base_sims <-  lm_OP_consumption_growth$coefficients[1] + lm_OP_consumption_growth$coefficients[2]*Real_GDP_pred_base_growth + epsilon_op
-    TR_base_sims <-  lm_OP_TR$coefficients[1] + lm_OP_TR$coefficients[2] * OP_base_sims + epsilon_TR
+    TR_base_sims <-  intercept_OP_TR +beta_OP_TR * OP_base_sims + epsilon_TR
     
     ## Store the results into a output:
     TR_sims_mat[, i] <- TR
@@ -5077,19 +5093,10 @@ legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = 
 #par(mfrow = c(3, 1))
 #pdf("Plotting/Premiums/Reinsurance_premiums_solAdj_vs_base_mean.pdf")
 ## Mean:
-plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, 1] - 1, type = "l", col = col_list[1], ylim = c(0, 1), main = "Relative difference to base reinsurance premiums (mean)", xlab  = "Years", ylab = "Ratios", yaxt = "n")
-axis(2, at = seq(0, 1, by = 0.2), labels = paste0(seq(0, 1, by = 0.2) * 100, '%'), las = 1)
+plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, 1] - 1, type = "l", col = col_list[1], ylim = c(0, 1.1), main = "Relative difference to base reinsurance premiums (mean)", xlab  = "Years", ylab = "Ratios", yaxt = "n")
+axis(2, at = seq(0, 1.1, by = 0.2), labels = paste0(seq(0, 1, by = 0.2) * 100, '%'), las = 1)
 for(s in 2:4){
     points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, s] - 1, type = "l", col = col_list[s])
-}
-legend("bottomright", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.8, lty = c(1,1,1,1))
-#dev.off()
-#pdf("Plotting/Premiums/Reinsurance_premiums_solAdj_vs_base_995th.pdf")
-## 99.5th quantile:
-plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][3, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, 1] - 1, type = "l", col = col_list[1], ylim = c(0, 10), main = "Relative difference to base reinsurance premiums (99.5th)", xlab  = "Years", ylab = "Ratios", yaxt = "n")
-axis(2, at = seq(0, 8, by = 2), labels = paste0(seq(0, 8, by = 2) * 100, '%'), las = 1)
-for(s in 2:4){
-    points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][3, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, s]- 1, type = "l", col = col_list[s])
 }
 legend("bottomright", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.8, lty = c(1,1,1,1))
 #dev.off()
