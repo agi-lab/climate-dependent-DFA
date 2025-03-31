@@ -55,6 +55,12 @@ The main data folders and the corredsponding data sources used are outlined belo
 |-|-|-|-|
 | Economic |`World_pop.xlsx` | World population data by countries| [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
 |          |`AU-GDP-LCU.xlsx`|Historical Australian GDP at annual interval between 1960 and 2022|[World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
+|          |`SSP_scenarios.csv`|Country-level GDP projections for each SSP scenario through 2100|Sourced from [IIASA SSP database](https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&page=welcome); downloaded from [https://zenodo.org/records/8116099](https://zenodo.org/records/8116099) at 1 January 2024|
+|          |`AU_population_projections.xlsx`|Projections of Australian population for each SSP scenario through 2100|Downloaded from [IIASA SSP database](https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&page=welcome) at 18 March 2024|
+|          |`AU_Consumption_LCU.xlsx`|Australian aggregate consumption data at annual interval between 1974 and 2023|[World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 July 2024|
+|          |`AU_inflation_640101.xlsx`|Quarterly Consumer Price Index (CPI) data for Australia from 1948 to 2023|Downloaded from [Australian Bureau of Statistics](https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/latest-release)||
+|          |`Australian_cash_rate_data.xls` and `Australian_cash_rate_data_2011_2023.xls`|Australian cash rates data from 1976 to 2023|Downloaded from [Reserve Bank of Australia](https://www.rba.gov.au/statistics/cash-rate/) at 1 January 2024|
+|          |`Potential-growth-database.xlsx`|Potential GDP growth estimates by countries between 1981 and 2021|Downloaded from  [World Bank Potential Growth Database](https://www.worldbank.org/en/research/brief/potential-growth-database) at 11 June 2024|
 
 
   ## Authors
