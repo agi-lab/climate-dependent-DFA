@@ -44,13 +44,6 @@ Once the `Data` folder is downloaded, place it in the same directory as `DFA cod
 
 The main data folders and the corredsponding data sources used are outlined in the table below. 
 
-- `Economic`: Contains historical data on macroeconomic variables (e.g., GDP, interest rates, and inflation rates) and projections of GDP, population, and oil and gas production under each SSP scenario; the detailed data sources are listed below:
-- `Equity return`: Contains the pseudo All-Ordinaries Shares total returns series and the financial statements of a representative oil and gas producer. Due to licensing restrictions, we are unable to provide the actual Total Returns series of the All-Ordinaries Shares Index and the financial statements of Woodside Energy Limited from FactSet. Users are encouraged to obtain this data directly from FactSet.  
-- `Hazards loss`: Includes the ICA and EM-DAT datasets on catastrophe insurance losses in Australia.  
-- `Precipitations`, `FWI`, `SST and MSLP`, `Near-surface temperature`, and `Air temperature`: Contain historical observations of precipitation, fire weather index, sea-surface temperature, mean sea-level pressure, near-surface temperature, and air temperature at the grid cell level across Australia (or nearby ocean areas).  
-- `CMIP6_ensemble_precipitation`, `CMIP6_ensemble_SST`, `CMIP6_ensemble_MSLP`, `CMIP6_ensemble_near_surface_temperature`, and `CMIP6_ensemble_air_temperature`: Contain CMIP6 ensemble projections of the corresponding climate variables.
-
-
 | Data categories (Folder name)| File names and Descriptions &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|Sources|
 |-|-|-|
 | **Economic** |`World_pop.xlsx`: World population data by countries &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;| [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
@@ -73,7 +66,15 @@ The main data folders and the corredsponding data sources used are outlined in t
 |   |`fwixx_hurs_part1`,...,`fwixx_hurs_part7`: Raw projections and historical backcasts of FWI statistics in Australia from an ensemble of CMIP6 model, in `NetCDF` format|Downloaded from [FWI data under historical and SSP projections in CMIP6 (Quilcaille et al., 2022)](https://www.research-collection.ethz.ch/handle/20.500.11850/583391)|
 |   |`mfwixx_ensemble_hist_data.csv` and `xfwixx_ensemble_hist_data.csv`: Processed historical backcasts of FWI statistics in Australia (described above) in cleansed `CSV` format|Derived from [FWI data under historical and SSP projections in CMIP6 (Quilcaille et al., 2022)](https://www.research-collection.ethz.ch/handle/20.500.11850/583391); detailed source codes can be found in `FWI_import_clean.R` under the `Miscellaneous data cleaning codes` folder|
 |   |`ssp126_ensemble_mfwixx_proj.csv`,...,`ssp585_ensemble_mfwixx_proj.csv`: Processed projections of FWI statistics in Australia under different SSP scenarios, in cleansed `CSV` format|Derived from [FWI data under historical and SSP projections in CMIP6 (Quilcaille et al., 2022)](https://www.research-collection.ethz.ch/handle/20.500.11850/583391); detailed source codes can be found in `FWI_import_clean.R` under the `Miscellaneous data cleaning codes` folder|
-|**SST and MSLP**|`Sea_ERA5_50_59.nc`,...,`Sea_ERA5_2018_23.nc`: ERA5 reanalysis data of historical Sea Surface Temperature (SST) and Mean Sea Level Pressure (MSLP) over the Australian tropical cyclone basin|Downloaded from [Copernicus Climate Change Service](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-monthly-means?tab=overview)|
+|**SST and MSLP**|`Sea_ERA5_50_59.nc`,...,`Sea_ERA5_2018_23.nc`: ERA5 reanalysis data of historical Sea Surface Temperature (SST) and Mean Sea Level Pressure (MSLP) over the Australian tropical cyclone basin|Downloaded from [Copernicus Climate Change Service](https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels-monthly-means?tab=overview) at 6 May 2024|
+|**Near-surface temperature**| | |
+|**Air temperature**| | |
+|**CMIP6_ensemble_precipitation**| | |
+|**CMIP6_ensemble_SST**| | |
+|**CMIP6_ensemble_MSLP**| | |
+|**CMIP6_ensemble_near_surface_temperature**| | |
+|**CMIP6_ensemble_air_temperature**| | |
+
 
 
 
