@@ -78,7 +78,7 @@ The main data folders and the corredsponding data sources used are outlined in t
     <tr>
       <th>Data categories (Folder name)</th>
       <th>File names</th>
-      <th style="width:400px;">Descriptions</th>
+      <th style="width:800px;">Descriptions</th>
       <th>Download sources</th>
     </tr>
   </thead>
