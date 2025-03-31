@@ -61,6 +61,10 @@ The main data folders and the corredsponding data sources used are outlined belo
 |          |`AU_inflation_640101.xlsx`|Quarterly Consumer Price Index (CPI) data for Australia from 1948 to 2023|Downloaded from [Australian Bureau of Statistics](https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/latest-release)||
 |          |`Australian_cash_rate_data.xls` and `Australian_cash_rate_data_2011_2023.xls`|Australian cash rates data from 1976 to 2023|Downloaded from [Reserve Bank of Australia](https://www.rba.gov.au/statistics/cash-rate/) at 1 January 2024|
 |          |`Potential-growth-database.xlsx`|Potential GDP growth estimates by countries between 1981 and 2021|Downloaded from  [World Bank Potential Growth Database](https://www.worldbank.org/en/research/brief/potential-growth-database) at 11 June 2024|
+|          |`OECD_Gas_SSP.xlsx` and `OECD_Oil_SSP.xlsx`|Projections of oil and gas production under each SSP scenarios in OECD countries|Downloaded from [IIASA SSP database](https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&page=welcome) at 18 March 2024|
+|Equity return|`All-Ordinaries-Yearly-pseudo.xlsx`|Pseudo All-Ordinaries Shares total returns series between 1992 and 2023|Original data is not provided due to licensing restrictions; users can download the original version from [FactSet](https://www.factset.com/)| 
+|             |`Woodside_Financials_pseudo.xlsx`|Pseudo financial statements from a oil and gas producer (Woodside) between 2014 and 2023|Original data is not provided due to licensing restrictions; users can download the original version from [FactSet](https://www.factset.com/). Alternatively, users can hand-collect the relevant data for calculation based on the published financial statements from [Woodside Energy](https://www.woodside.com/investors/reports-investor-briefings)|
+
 
 
   ## Authors
