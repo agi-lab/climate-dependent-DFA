@@ -73,201 +73,24 @@ The main data folders and the corredsponding data sources used are outlined in t
 
 
 
-<table>
-  <thead>
-    <tr>
-      <th>Data categories (Folder name)</th>
-      <th>File names</th>
-      <th style="width:800px;">Descriptions</th>
-      <th>Download sources</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>Economic</td>
-      <td>World_pop.xlsx</td>
-      <td>World population data by countries</td>
-      <td>
-        <a href="https://databank.worldbank.org/source/world-development-indicators">
-          World Development Indicators (World Bank)
-        </a>;
-        downloaded at 23 March 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>AU-GDP-LCU.xlsx</td>
-      <td>Historical Australian GDP at annual interval between 1960 and 2022</td>
-      <td>
-        <a href="https://databank.worldbank.org/source/world-development-indicators">
-          World Development Indicators (World Bank)
-        </a>;
-        downloaded at 23 March 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>SSP_scenarios.csv</td>
-      <td>Country-level GDP projections for each SSP scenario through 2100</td>
-      <td>
-        Sourced from
-        <a href="https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&amp;page=welcome">
-          IIASA SSP database
-        </a>;
-        downloaded from
-        <a href="https://zenodo.org/records/8116099">https://zenodo.org/records/8116099</a>
-        at 1 January 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>AU_population_projections.xlsx</td>
-      <td>Projections of Australian population for each SSP scenario through 2100</td>
-      <td>
-        Downloaded from
-        <a href="https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&amp;page=welcome">
-          IIASA SSP database
-        </a>
-        at 18 March 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>AU_Consumption_LCU.xlsx</td>
-      <td>Australian aggregate consumption data at annual interval between 1974 and 2023</td>
-      <td>
-        <a href="https://databank.worldbank.org/source/world-development-indicators">
-          World Development Indicators (World Bank)
-        </a>;
-        downloaded at 23 July 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>AU_inflation_640101.xlsx</td>
-      <td>Quarterly Consumer Price Index (CPI) data for Australia from 1948 to 2023</td>
-      <td>
-        Downloaded from
-        <a href="https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/latest-release">
-          Australian Bureau of Statistics
-        </a>
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>Australian_cash_rate_data.xls and Australian_cash_rate_data_2011_2023.xls</td>
-      <td>Australian cash rates data from 1976 to 2023</td>
-      <td>
-        Downloaded from
-        <a href="https://www.rba.gov.au/statistics/cash-rate/">
-          Reserve Bank of Australia
-        </a>
-        at 1 January 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>Potential-growth-database.xlsx</td>
-      <td>Potential GDP growth estimates by countries between 1981 and 2021</td>
-      <td>
-        Downloaded from
-        <a href="https://www.worldbank.org/en/research/brief/potential-growth-database">
-          World Bank Potential Growth Database
-        </a>
-        at 11 June 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>OECD_Gas_SSP.xlsx and OECD_Oil_SSP.xlsx</td>
-      <td>Projections of oil and gas production under each SSP scenarios in OECD countries</td>
-      <td>
-        Downloaded from
-        <a href="https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&amp;page=welcome">
-          IIASA SSP database
-        </a>
-        at 18 March 2024
-      </td>
-    </tr>
-    <tr>
-      <td>Equity return</td>
-      <td>All-Ordinaries-Yearly-pseudo.xlsx</td>
-      <td>Pseudo All-Ordinaries Shares total returns series between 1992 and 2023</td>
-      <td>
-        Original data is not provided due to licensing restrictions; users can
-        download the original version from
-        <a href="https://www.factset.com/">FactSet</a>
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>Woodside_Financials_pseudo.xlsx</td>
-      <td>Pseudo financial statements from a oil and gas producer (Woodside) between 2014 and 2023</td>
-      <td>
-        Original data is not provided due to licensing restrictions; users can
-        download the original version from
-        <a href="https://www.factset.com/">FactSet</a>.
-        Alternatively, users can hand-collect the relevant data for calculation
-        based on the published financial statements from
-        <a href="https://www.woodside.com/investors/reports-investor-briefings">
-          Woodside Energy
-        </a>
-      </td>
-    </tr>
-    <tr>
-      <td>Hazards loss</td>
-      <td>ICA-Historical-Normalised-Catastrophe-August-2023.xlsx</td>
-      <td>Historical records of insured losses from natural disasters in Australia between 1967 and 2023</td>
-      <td>
-        Downloaded from
-        <a href="https://insurancecouncil.com.au/industry-members/data-hub/">
-          Insurance Council of Australia
-        </a>
-        at 27 August 2023
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>EM_DAT_AU.xlsx</td>
-      <td>Historical records of both insured losses and total economic damages from natural disasters in Australia between 1985 and 2023</td>
-      <td>
-        <a href="https://public.emdat.be/data">EM-DAT database</a>
-      </td>
-    </tr>
-    <tr>
-      <td>Precipitations</td>
-      <td>era5-x0.25_timeseries_pr,rx1day,rx5day_timeseries_annual_1950-2022_mean_historical_era5_x0.25_mean.xlsx</td>
-      <td>ERA5 reanalysis data of historical precipitation information in Australia between 1950 and 2022</td>
-      <td>
-        Originated from
-        <a href="https://climate.copernicus.eu/">Copernicus Climate Change Service</a>;
-        cleansed version downloaded from
-        <a href="https://climateknowledgeportal.worldbank.org/download-data">
-          World Bank Climate Change Knowledge Portal
-        </a>
-        at 29 April 2024
-      </td>
-    </tr>
-    <tr>
-      <td>FWI</td>
-      <td>FWI_1940_1949.nc,..., FWI_2016_2022.nc</td>
-      <td>Historical Fire Weather Index (FWI) in Australia constructed based on ERA5 reanalysis data between 1940 and 2022</td>
-      <td>
-        Downloaded from
-        <a href="https://climate.copernicus.eu/">
-          Copernicus Climate Change Service
-        </a>
-        at 3 May 2024
-      </td>
-    </tr>
-    <tr>
-      <td></td>
-      <td>fwixx_hurs_part1,...,fwixx_hurs_part7</td>
-      <td>Projections and historical backcasts of FWI statistics in Australia from an ensemble of CMIP6 model</td>
-      <td>Downloaded from:</td>
-    </tr>
-  </tbody>
-</table>
+| Data categories (Folder name) | Descriptions | File names | Sources |
+|------------------------------|--------------|------------|---------|
+| Economic | World population data by countries | `World_pop.xlsx` | [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024 |
+| | Historical Australian GDP at annual interval between 1960 and 2022 | `AU-GDP-LCU.xlsx` | [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024 |
+| | Country-level GDP projections for each SSP scenario through 2100 | `SSP_scenarios.csv` | Sourced from [IIASA SSP database](https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&page=welcome); downloaded from [https://zenodo.org/records/8116099](https://zenodo.org/records/8116099) at 1 January 2024 |
+| | Projections of Australian population for each SSP scenario through 2100 | `AU_population_projections.xlsx` | Downloaded from [IIASA SSP database](https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&page=welcome) at 18 March 2024 |
+| | Australian aggregate consumption data at annual interval between 1974 and 2023 | `AU_Consumption_LCU.xlsx` | [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 July 2024 |
+| | Quarterly Consumer Price Index (CPI) data for Australia from 1948 to 2023 | `AU_inflation_640101.xlsx` | Downloaded from [Australian Bureau of Statistics](https://www.abs.gov.au/statistics/economy/price-indexes-and-inflation/consumer-price-index-australia/latest-release) |
+| | Australian cash rates data from 1976 to 2023 | `Australian_cash_rate_data.xls` and `Australian_cash_rate_data_2011_2023.xls` | Downloaded from [Reserve Bank of Australia](https://www.rba.gov.au/statistics/cash-rate/) at 1 January 2024 |
+| | Potential GDP growth estimates by countries between 1981 and 2021 | `Potential-growth-database.xlsx` | Downloaded from [World Bank Potential Growth Database](https://www.worldbank.org/en/research/brief/potential-growth-database) at 11 June 2024 |
+| | Projections of oil and gas production under each SSP scenarios in OECD countries | `OECD_Gas_SSP.xlsx` and `OECD_Oil_SSP.xlsx` | Downloaded from [IIASA SSP database](https://tntcat.iiasa.ac.at/SspDb/dsd?Action=htmlpage&page=welcome) at 18 March 2024 |
+| Equity return | Pseudo All-Ordinaries Shares total returns series between 1992 and 2023 | `All-Ordinaries-Yearly-pseudo.xlsx` | Original data is not provided due to licensing restrictions; users can download the original version from [FactSet](https://www.factset.com/) | 
+| | Pseudo financial statements from a oil and gas producer (Woodside) between 2014 and 2023 | `Woodside_Financials_pseudo.xlsx` | Original data is not provided due to licensing restrictions; users can download the original version from [FactSet](https://www.factset.com/). Alternatively, users can hand-collect the relevant data for calculation based on the published financial statements from [Woodside Energy](https://www.woodside.com/investors/reports-investor-briefings) |
+| Hazards loss | Historical records of insured losses from natural disasters in Australia between 1967 and 2023 | `ICA-Historical-Normalised-Catastrophe-August-2023.xlsx` | Downloaded from [Insurance Council of Australia](https://insurancecouncil.com.au/industry-members/data-hub/) at 27 August 2023 |
+| | Historical records of both insured losses and total economic damages from natural disasters in Australia between 1985 and 2023 | `EM_DAT_AU.xlsx` | [EM-DAT database](https://public.emdat.be/data) |
+| Precipitations | ERA5 reanalysis data of historical precipitation information in Australia between 1950 and 2022 | `era5-x0.25_timeseries_pr,rx1day,rx5day_timeseries_annual_1950-2022_mean_historical_era5_x0.25_mean.xlsx` | Originated from [Copernicus Climate Change Service](https://climate.copernicus.eu/);cleansed version downloaded from [World Bank Climate Change Knowledge Portal](https://climateknowledgeportal.worldbank.org/download-data) at 29 April 2024 |
+| FWI | Historical Fire Weather Index (FWI) in Australia constructed based on ERA5 reanalysis data between 1940 and 2022 | `FWI_1940_1949.nc`,..., `FWI_2016_2022.nc` | Downloaded from [Copernicus Climate Change Service](https://climate.copernicus.eu/) at 3 May 2024 |
+| | Projections and historical backcasts of FWI statistics in Australia from an ensemble of CMIP6 model | `fwixx_hurs_part1`,...,`fwixx_hurs_part7` | Downloaded from: |
 
 
   ## Authors
