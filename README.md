@@ -34,19 +34,28 @@ All code used to generate the results can be found in the Rmarkdown file: `DFA_m
 
 ## Data overview
 
-Due to the large file size (around 36.6GB), the data used in this paper cannot be uploaded to GitHub. However, users can download all the data from the Dropbox link below:  
+Due to the large file size (around 41GB), the data used in this paper cannot be uploaded to GitHub. However, users can download all the data from the Dropbox link below:  
 
 [**Download Data**](https://www.dropbox.com/scl/fo/7zva73raqce08phx2iorw/AB8hZsBbdVbEGrIf9i5jigw?rlkey=4x670mfk5j97gplde6vfslp34&st=60b8xd79&dl=0)  
 
+Please note that we are in the process of uploading the data to Zenodo, and the Dropbox link above will be updated to a Zenodo link upon publication.
+
 Once the `Data` folder is downloaded, place it in the same directory as `DFA codes.Rproj` and `DFA_model_final.Rmd`. After this setup, users can run the RMarkdown file `DFA_model_final.Rmd` without further configuration.  
 
-The main data folders used are outlined below:
+The main data folders and the corredsponding data sources used are outlined below:
 
-- `Economic`: Contains historical data on macroeconomic variables (e.g., GDP, interest rates, and inflation rates) and projections of GDP, population, and oil and gas production under each SSP scenario.  
+- `Economic`: Contains historical data on macroeconomic variables (e.g., GDP, interest rates, and inflation rates) and projections of GDP, population, and oil and gas production under each SSP scenario; the detailed data sources are listed below:
 - `Equity return`: Contains the pseudo All-Ordinaries Shares total returns series and the financial statements of a representative oil and gas producer. Due to licensing restrictions, we are unable to provide the actual Total Returns series of the All-Ordinaries Shares Index and the financial statements of Woodside Energy Limited from FactSet. Users are encouraged to obtain this data directly from FactSet.  
 - `Hazards loss`: Includes the ICA and EM-DAT datasets on catastrophe insurance losses in Australia.  
 - `Precipitations`, `FWI`, `SST and MSLP`, `Near-surface temperature`, and `Air temperature`: Contain historical observations of precipitation, fire weather index, sea-surface temperature, mean sea-level pressure, near-surface temperature, and air temperature at the grid cell level across Australia (or nearby ocean areas).  
 - `CMIP6_ensemble_precipitation`, `CMIP6_ensemble_SST`, `CMIP6_ensemble_MSLP`, `CMIP6_ensemble_near_surface_temperature`, and `CMIP6_ensemble_air_temperature`: Contain CMIP6 ensemble projections of the corresponding climate variables.
+
+
+| Data categories (Folder name)| File names | Description|Download sources|
+|-|-|-|-|
+| Economic |`World_pop.xlsx` | World population data by countries| [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
+|          |`AU-GDP-LCU.xlsx`|Historical Australian GDP at annual interval between 1960 and 2022|[World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
+
 
   ## Authors
 
