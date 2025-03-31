@@ -50,21 +50,8 @@ The main data folders and the corredsponding data sources used are outlined in t
 - `Precipitations`, `FWI`, `SST and MSLP`, `Near-surface temperature`, and `Air temperature`: Contain historical observations of precipitation, fire weather index, sea-surface temperature, mean sea-level pressure, near-surface temperature, and air temperature at the grid cell level across Australia (or nearby ocean areas).  
 - `CMIP6_ensemble_precipitation`, `CMIP6_ensemble_SST`, `CMIP6_ensemble_MSLP`, `CMIP6_ensemble_near_surface_temperature`, and `CMIP6_ensemble_air_temperature`: Contain CMIP6 ensemble projections of the corresponding climate variables.
 
-<style>
-table th:first-of-type {
-    width: 10%;
-}
-table th:nth-of-type(2) {
-    width: 10%;
-}
-table th:nth-of-type(3) {
-    width: 50%;
-}
-table th:nth-of-type(4) {
-    width: 30%;
-}
-</style>
-| Data categories (Folder name)| File names | Descriptions|Download sources|
+
+| Data categories (Folder name)| File names | Descriptions &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;|Download sources|
 |-|-|-----|-|
 | Economic |`World_pop.xlsx` | World population data by countries| [World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
 |          |`AU-GDP-LCU.xlsx`|Historical Australian GDP at annual interval between 1960 and 2022|[World Development Indicators (World Bank)](https://databank.worldbank.org/source/world-development-indicators); downloaded at 23 March 2024|
