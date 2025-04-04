@@ -36,11 +36,7 @@ The miscellaneous data cleansing scripts are stored in the folder `Miscellaneous
 
 ## Data overview
 
-Due to the large file size (around 32GB), the data used in this paper cannot be uploaded to GitHub. However, users can download all the data from the Dropbox link below:  
-
-[**Download Data**](https://www.dropbox.com/scl/fo/7zva73raqce08phx2iorw/AB8hZsBbdVbEGrIf9i5jigw?rlkey=4x670mfk5j97gplde6vfslp34&st=60b8xd79&dl=0)  
-
-Please note that we are in the process of uploading the data to Zenodo, and the Dropbox link above will be updated to a Zenodo link upon publication.
+Due to the large file size (around 32GB), the data used in this paper cannot be uploaded to GitHub. However, users can download all the data from: [https://zenodo.org/records/15098758](https://zenodo.org/records/15098758).
 
 Once the `Data` folder is downloaded, place it in the same directory as `DFA codes.Rproj` and `DFA_model_final.Rmd`. After this setup, users can run the RMarkdown file `DFA_model_final.Rmd` without further configuration.  
 
