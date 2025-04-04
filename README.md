@@ -32,9 +32,11 @@ All code used to generate the results can be found in the Rmarkdown file: `DFA_m
     
 - **Section 3.3 Risk and return measures**: This section presents the results shown in Section 3.3 in the paper.
 
+The miscellaneous data cleansing scripts are stored in the folder `Miscellaneous data cleaning codes`. These scripts are optional for users to run and can all be executed from within `DFA_model_final.Rmd`.
+
 ## Data overview
 
-Due to the large file size (around 41GB), the data used in this paper cannot be uploaded to GitHub. However, users can download all the data from the Dropbox link below:  
+Due to the large file size (around 32GB), the data used in this paper cannot be uploaded to GitHub. However, users can download all the data from the Dropbox link below:  
 
 [**Download Data**](https://www.dropbox.com/scl/fo/7zva73raqce08phx2iorw/AB8hZsBbdVbEGrIf9i5jigw?rlkey=4x670mfk5j97gplde6vfslp34&st=60b8xd79&dl=0)  
 
@@ -86,9 +88,9 @@ The main data folders and the corredsponding data sources used are outlined in t
 |                       |`access_cm2-ssp1_2_6_near_surface_air_temperature.zip`,...,`noresm2_mm-ssp5_8_5_near_surface_air_temperature.zip`: Raw projections of near-surface temperature over the Australian land from CMIP6 ensemble under each SSP scenario, in `NetCDF` format|Downloaded from: [Copernicus Climate Change Service:CMIP6 climate projections](https://climate.copernicus.eu/) at 29 April 2024|
 |                       |`ssp126_ensemble_tas_proj.csv`,...,`ssp585_ensemble_tas_proj.csv`: Cleansed projections of near-surface temperature over the Australian land from CMIP6 ensemble under each SSP scenario, in `NetCDF` format|Downloaded from: [Copernicus Climate Change Service:CMIP6 climate projections](https://climate.copernicus.eu/) at 29 April 2024|
 |**CMIP6_ensemble_air_temperature**|`access_cm2-historical_air_temperature.zip`,...,`noresm2_mm-historical_air_temperature.zip`: Historical backcasts of air temperature (at 300hPa) over the Australia from CMIP6 ensemble, in `NetCDF` format|Downloaded from: [Copernicus Climate Change Service:CMIP6 climate projections](https://climate.copernicus.eu/) at 29 April 2024|
-|                                  |`historical_ensemble_ta.csv`: Cleansed historical backcasts of air temperature over Australia from CMIP6 ensemble, in `CSV` format|Derived from the data source listed above|
+|                                  |`historical_ensemble_ta.csv`: Cleansed historical backcasts of air temperature over Australia from CMIP6 ensemble, in `CSV` format|Derived from the data source listed above; detailed source codes can be found in `Air_temperature_import_clean.R` under the `Miscellaneous data cleaning codes` folder|
 |                                  |`access_cm2-ssp1_2_6_air_temperature.zip`,...,`noresm2_mm-ssp5_8_5_air_temperature.zip`: Raw projections of air temperature (at 300hPa) over Australia from CMIP6 ensemble under each SSP scenario, in `NetCDF` format|Downloaded from: [Copernicus Climate Change Service:CMIP6 climate projections](https://climate.copernicus.eu/) at 29 April 2024|
-|                                  |`ssp126_ensemble_ta_proj.csv`,...,`ssp585_ensemble_ta_proj.csv`: Cleansed projections of air temperature (at 300hPa) over Australia from CMIP6 ensemble under each SSP scenario, in `CSV` format|Derived from the data source listed above |
+|                                  |`ssp126_ensemble_ta_proj.csv`,...,`ssp585_ensemble_ta_proj.csv`: Cleansed projections of air temperature (at 300hPa) over Australia from CMIP6 ensemble under each SSP scenario, in `CSV` format|Derived from the data source listed above|
 
 
 
