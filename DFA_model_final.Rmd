@@ -4844,9 +4844,8 @@ for(s in 1:4){
          inflation_rates <- DFA_components_all_scenarios[[s]]$MEV_module$Inflation_rates[, i]
          consumption_growth <- pmax(Adj_consumption_growth_list[[s]][, i], -1)
          ## Get the brown and other excess return:
-         brown_return <- equity_TR_excess_adj_OP_list[[s]][, i]
-         other_return <- equity_TR_excess_adj_OP_brown_list[[s]][, i]
-         
+         brown_return <- equity_TR_excess_adj_OP_brown_list[[s]][, i]
+         other_return <- equity_TR_excess_adj_OP_list[[s]][, i]
          
          ## Get the excess equity return:
          equity_return_excess <- Brown_weight*brown_return + (1-Brown_weight)*other_return
