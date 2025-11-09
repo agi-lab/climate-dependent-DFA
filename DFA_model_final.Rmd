@@ -725,8 +725,8 @@ calc_surplus_func_full_cycle <- function(Risk_free_weight,
      Short_rates_nominal <-  if(assumption_alternative == FALSE){simulation_DFA_list$MEV_module$Nominal_rates[1:horizon, i]} else{simulation_DFA_list$MEV_module$Nominal_rates_alt[1:horizon, i]}
      Short_rates_real <- if(assumption_alternative == FALSE){simulation_DFA_list$MEV_module$Real_rates[1:horizon, i]} else{simulation_DFA_list$MEV_module$Real_rates_alternative[1:horizon, i]}
      ## Get the brown and other excess return:
-     brown_return <- equities_output[[scenario_index]][1:horizon, i]
-     other_return <- equities_output_brown[[scenario_index]][1:horizon, i]
+     brown_return <- equities_output_brown[[scenario_index]][1:horizon, i]
+     other_return <- equities_output[[scenario_index]][1:horizon, i]
      
      
      ## Get the excess equity return:
