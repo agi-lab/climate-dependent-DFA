@@ -32,6 +32,8 @@ This Rmarkdown file seeks to reproduce the key results in the paper ``Dynamic Fi
     
 - Section [Section 3.3 Risk and return measures]: This section presents the results shown in Section 3.3 in the paper.
 
+- Section [Sensitivity analysis]: This section presents the sensitivity analysis results shown in the appendix of the paper. 
+
 
 # Loading required packages
 
@@ -43,16 +45,44 @@ pacman::p_load(
   mgcv, gamlss, fitdistrplus, actuar, kableExtra, tweedie, statmod, Ecfun, 
   scatterplot3d, gratia, pracma, aTSA, ncdf4, raster, rgdal, sf, corrplot, 
   quantreg, wordcloud, tm, scales, stringr, modelsummary, coda, 
-  plotly, GDPuc, colorspace, Rmpfr, cvar, VGAM, data.table, openxlsx
+  plotly, GDPuc, colorspace, Rmpfr, cvar, VGAM, data.table, openxlsx, AER, viridis, MASS
 )
 ```
 
+```{r Define color sclae used for plotting}
+### Define a series of color scale
+viridis_color_scale <- viridis(10)
+inferno_color_scale <- viridis(20, option = "inferno")
 
-Note: If the `rgdal` package (used for processing spatial data) is not installed before running this script, please set         `clean_data_required <- TRUE` in the setting below. 
+green_col <- viridis_color_scale[6]
+purple_col <- inferno_color_scale[4]
+orange_col <- viridis_color_scale[10]
+red_col <- inferno_color_scale[11]
+```
+
+```{r}
+# viridis_colors <- viridis(20, option = "inferno")
+# 
+# # Convert HEX to RGB and then to grayscale using luminance formula
+# grayscale_values <- col2rgb(viridis_colors)
+# luminance <- 0.299 * grayscale_values[1, ] +
+#              0.587 * grayscale_values[2, ] +
+#              0.114 * grayscale_values[3, ]
+# 
+# # Normalize and plot
+# plot(luminance, type = "h", lwd = 10, col = viridis_colors,
+#      main = "Viridis Grayscale Brightness", xlab = "Color Index", ylab = "Luminance")
+```
+
+
+
+
+Note: If the `rgdal` package (used for processing spatial data) is not installed before running this script, please set `clean_data_required <- TRUE` in the setting below. 
 
 ```{r Indicate whether clean data is required (for rgdal package)}
 clean_data_required <- T
 ```
+
 
 
 # Files and data path
@@ -624,7 +654,7 @@ calc_surplus_func_full_cycle <- function(Risk_free_weight,
                               k1_param = k1_default,
                               S0_param = S_ref_default,
                               k3_param = k3_default, 
-                              assumption_alternative = FALSE){
+                              assumption_alternative = FALSE, Div_payout = 0, solvency_ratio_steady = 1, Div_limit = 0.5){
     
      ## Obtain the CPI and GDP corresponding to each scenario:
      CPI_pred <- CPI_pred_mat[1:horizon, scenario_index]
@@ -727,8 +757,6 @@ calc_surplus_func_full_cycle <- function(Risk_free_weight,
      ## Get the brown and other excess return:
      brown_return <- equities_output_brown[[scenario_index]][1:horizon, i]
      other_return <- equities_output[[scenario_index]][1:horizon, i]
-     
-     
      ## Get the excess equity return:
      equity_return_excess <- Brown_weight*brown_return + (1-Brown_weight)*other_return
      #### Get the nominal equity return: 
@@ -754,14 +782,19 @@ calc_surplus_func_full_cycle <- function(Risk_free_weight,
          S_prev_Re <- if(re_capital_projections[k-1] <= 0){0}else{re_capital_projections[k-1]/(re_premium_projections[k-1])}
          P_re_sim <- premium_S_func_alt(P_ref = Re_premium_CAT[k -1], S_prev = S_prev_Re, S_ref = S0_param, k1 = k1_param, floor_param = Re_premium_CAT[k - 1])
          ## Calculate the net premium:
+         P_gross <- Premium_gross_CAT[k-1] + Premium_gross_Non_CAT[k-1] + Premium_gross_Non_CAT_other[k-1]
          P_net <- Premium_gross_CAT[k-1] + Premium_gross_Non_CAT[k-1] + Premium_gross_Non_CAT_other[k-1] - P_re_sim
-         ## Calculate the dividend payout:
+         ## Calculate the dividend payout from primary insurers:
+         capital_exDiv <- (capital_projections[k-1] + P_net)*(1 + investment_return[k-1]) - claims_cost_total[k-1]
+         net_profit <- capital_exDiv - capital_projections[k-1]
+         Div <- max(min(net_profit * Div_limit, dividends_payout_func(K_exDiv = capital_exDiv, P_t = P_gross, S_0 = solvency_ratio_steady, k3 = Div_payout)), 0)
+         ## Calculate the dividend payout from reinsurers:
          Re_capital_exDiv <- (re_capital_projections[k-1] + P_re_sim)*(1 + investment_return[k-1]) -  Re_CAT_loss[k-1]
          Div_rev <- dividends_payout_func(K_exDiv = Re_capital_exDiv, P_t = P_re_sim, S_0 = S0_param, k3 = k3_param)
          ## Calculate the reinsurance capital:
          re_capital_projections[k] <- ifelse(re_capital_projections[k - 1] <= 0, 0, Re_capital_exDiv - Div_rev)
          ## Calculate the insurer capital:
-         capital_projections[k] <- ifelse(capital_projections[k-1] <= 0, 0, (capital_projections[k-1] + P_net)*(1 + investment_return[k-1]) - claims_cost_total[k-1])
+         capital_projections[k] <- ifelse(capital_projections[k-1] <= 0, 0, capital_exDiv - Div)
          ## Assign the net premium:
          Premium_net[k] <- P_net
          ## Assign the reinsurance premium: 
@@ -875,15 +908,15 @@ barplot_rotate <- function(data, column_to_plot, labels_vec, rot_angle, title, x
 }
 
 ## Function for plotting quantiles:
-plot_quantiles_scenario <- function(quantiles_list, forecast_periods, var_name, main, y_range, colour_list, horizon, transparency, label_percents = F, perc_step = 0.05, LOG = FALSE){
+plot_quantiles_scenario <- function(quantiles_list, forecast_periods, var_name, main, y_range, colour_list, horizon, transparency, label_percents = F, perc_step = 0.05, LOG = FALSE, cex.main.choice = 1, cex.lab.choice = 1, cex.axis.choice = 1, xlab.name = "Years", mean_lwd = 2, quantiles_lwd = 1.5){
     if(label_percents == T){
     # Plotting
     plot(forecast_periods, quantiles_list[[1]][2, 1:horizon], type = "n", ylim = y_range,
-         xlab = "Forecast Period", ylab = var_name, main = main, yaxt = "n")
+         xlab = xlab.name, ylab = var_name, main = main, yaxt = "n", cex.main = cex.main.choice, cex.lab = cex.lab.choice, cex.axis = cex.axis.choice)
     axis(2, at = seq(y_range[1], y_range[2], by = perc_step), labels = paste0(seq(y_range[1], y_range[2], by = perc_step) * 100, '%'), las = 1)
     } else{
         plot(forecast_periods, quantiles_list[[1]][2, 1:horizon], type = "n", ylim = y_range,
-         xlab = "Forecast Period", ylab = var_name, main = main)
+         xlab = xlab.name, ylab = var_name, main = main, cex.main = cex.main.choice, cex.lab = cex.lab.choice, cex.axis = cex.axis.choice)
     }
     if(LOG == FALSE){
     for(j in 1:length(quantiles_list)){
@@ -894,9 +927,9 @@ plot_quantiles_scenario <- function(quantiles_list, forecast_periods, var_name, 
                 col = alpha(colour, transparency), border = NA) 
         
         # Add quantile lines
-        lines(forecast_periods, quantiles_list[[j]][2, 1:horizon], col = colour, lwd = 2, lty = 1) # 50% quantile (median)
-        lines(forecast_periods, quantiles_list[[j]][1, 1:horizon], col = colour, lty = 2) # Lower quantile
-        lines(forecast_periods, quantiles_list[[j]][3, 1:horizon], col = colour, lty = 2) # Upper quantile
+        lines(forecast_periods, quantiles_list[[j]][2, 1:horizon], col = colour, lwd = mean_lwd, lty = 1) # 50% quantile (median)
+        lines(forecast_periods, quantiles_list[[j]][1, 1:horizon], col = colour, lwd = quantiles_lwd, lty = 2) # Lower quantile
+        lines(forecast_periods, quantiles_list[[j]][3, 1:horizon], col = colour, lwd = quantiles_lwd, lty = 2) # Upper quantile
     }} else{
         for(j in 1:length(quantiles_list)){
         colour = colour_list[[j]]
@@ -906,23 +939,23 @@ plot_quantiles_scenario <- function(quantiles_list, forecast_periods, var_name, 
                 col = alpha(colour, transparency), border = NA) 
         
         # Add quantile lines
-        lines(forecast_periods, log(quantiles_list[[j]][2, 1:horizon]), col = colour, lwd = 2, lty = 1) # 50% quantile (median)
-        lines(forecast_periods, log(quantiles_list[[j]][1, 1:horizon]), col = colour, lty = 2) # Lower quantile
-        lines(forecast_periods, log(quantiles_list[[j]][3, 1:horizon]), col = colour, lty = 2) # Upper quantile
+        lines(forecast_periods, log(quantiles_list[[j]][2, 1:horizon]), col = colour, lwd = mean_lwd, lty = 1) # 50% quantile (median)
+        lines(forecast_periods, log(quantiles_list[[j]][1, 1:horizon]), col = colour, lty = 2, lwd = quantiles_lwd) # Lower quantile
+        lines(forecast_periods, log(quantiles_list[[j]][3, 1:horizon]), col = colour, lty = 2, lwd = quantiles_lwd) # Upper quantile
             }
         }
 }
 
 ## Alternative function for plotting quantiles:
-plot_quantiles_scenario_2 <- function(quantiles_list, forecast_periods, var_name, main, y_range, colour_list, horizon, transparency, label_percents = F, lty_mean = 1, lwd_mean = 2, step_plot_perc = 0.05, quantile_lines = T){
+plot_quantiles_scenario_2 <- function(quantiles_list, forecast_periods, var_name, main, y_range, colour_list, horizon, transparency, label_percents = F, lty_mean = 1, lwd_mean = 2, step_plot_perc = 0.05, quantile_lines = T, cex.main.choice = 1, cex.lab.choice = 1, cex.axis.choice = 1, xlab.name = "Years", lwd_quantiles = 1.5){
     if(label_percents == T){
     # Plotting
     plot(forecast_periods, quantiles_list[[1]][2, 1:horizon], type = "n", ylim = y_range,
-         xlab = "Forecast Period", ylab = var_name, main = main, yaxt = "n")
+         xlab = xlab.name, ylab = var_name, main = main, yaxt = "n", cex.main = cex.main.choice, cex.lab = cex.lab.choice, cex.axis = cex.axis.choice)
     axis(2, at = seq(y_range[1], y_range[2], by = step_plot_perc), labels = paste0(seq(y_range[1], y_range[2], by = step_plot_perc) * 100, '%'), las = 1)
     } else{
         plot(forecast_periods, quantiles_list[[1]][2, 1:horizon], type = "n", ylim = y_range,
-         xlab = "Forecast Period", ylab = var_name, main = main)
+         xlab = xlab.name, ylab = var_name, main = main, cex.main = cex.main.choice, cex.lab = cex.lab.choice, cex.axis = cex.axis.choice)
     }
     
     for(j in 1:length(quantiles_list)){
@@ -935,8 +968,8 @@ plot_quantiles_scenario_2 <- function(quantiles_list, forecast_periods, var_name
         if(quantile_lines == T){
         # Add quantile lines
         lines(forecast_periods, quantiles_list[[j]][2, 1:horizon], col = colour, lwd = lwd_mean, lty = lty_mean) # 50% quantile (median)
-        lines(forecast_periods, quantiles_list[[j]][1, 1:horizon], col = colour, lty = 2) # Lower quantile
-        lines(forecast_periods, quantiles_list[[j]][3, 1:horizon], col = colour, lty = 2) # Upper quantile
+        lines(forecast_periods, quantiles_list[[j]][1, 1:horizon], col = colour, lwd = lwd_quantiles, lty = 2) # Lower quantile
+        lines(forecast_periods, quantiles_list[[j]][3, 1:horizon], col = colour, lwd = lwd_quantiles, lty = 2) # Upper quantile
         } else{lines(forecast_periods, quantiles_list[[j]][2, 1:horizon], col = colour, lwd = lwd_mean, lty = lty_mean)}
     }
 }
@@ -967,6 +1000,10 @@ multi_func <- function(x, quantile_low = 0.05, quantile_high = 0.95){
 
 multi_func_withMed <- function(x, quantile_low = 0.05, quantile_high = 0.95){
     c(quantile_05 = quantile(x, quantile_low), median = median(x), quantile_95 = quantile(x,quantile_high))
+}
+
+multi_func_withMed2 <- function(x, quantile_low = 0.05, quantile_high = 0.95){
+    c(quantile_05 = quantile(x, quantile_low), median = median(x), quantile_95 = quantile(x,quantile_high), mean = mean(x))
 }
 
 ## Function to find an element in a list of file names: 
@@ -1863,6 +1900,24 @@ modelsummary(list("Model 1" = glm_HS_sev_1), statistic = "p.value", stars = TRUE
 ```
 
 
+## Dispersion test for selected frequency models for all hazard types
+
+
+```{r Dispersion test for all hazards frequency model}
+print("============= Flood frequency model (Poisson) ==========================")
+dispersiontest(glm_Flood_freq_3, trafo = NULL, alternative = "two.sided")
+print("============= Bushfire frequency model (Poisson) ==========================")
+dispersiontest(glm_Bush_freq_1, trafo = NULL, alternative = "two.sided")
+print("============= Tropical Cyclones frequency model (Poisson) ==========================")
+dispersiontest(glm_Cyc_mm_freq_3, trafo = NULL, alternative = "two.sided")
+#print("============= Storms frequency model (Poisson) ==========================")
+#dispersiontest(glm_Storm_mm_freq_1, trafo = NULL, alternative = "two.sided")
+print("============= ECL frequency model (Poisson) ==========================")
+dispersiontest(glm_ECL_freq_2, trafo = NULL, alternative = "two.sided")
+print("============= Hailstorms frequency model (Poisson) ==========================")
+dispersiontest(glm_HS_freq, trafo = NULL, alternative = "two.sided")
+```
+
 
 ## MEV module
 
@@ -1884,6 +1939,7 @@ Fit the benchmark inflation rates model with A1(1) process:
 ```{r}
 ## Fit the benchmark inflation model:
 inflation_mod_bench <- arima(x = Au_inflation_annual$Inflation_rate, order=c(1, 0, 0))
+coeftest(inflation_mod_bench)
 ```
 
 
@@ -1904,6 +1960,7 @@ Fit a AR(1) model on the residuals:
 
 ```{r}
 SR_mod_AR1_potentialGDP <- sarima(lm_SR_GDP_potential$residuals, 1, 0, 0, details  = F)
+SR_mod_AR1_potentialGDP
 paste("Mu:", SR_mod_AR1_potentialGDP$fit$coef[2])
 paste("Phi:", SR_mod_AR1_potentialGDP$fit$coef[1])
 paste("Sigma:", sqrt(SR_mod_AR1_potentialGDP$fit$sigma2))
@@ -2048,6 +2105,10 @@ As for the other lines of business, due to its relatively weak connection with t
 Exposure_forecasts_other <- expsmooth(GI_other_exposure_pop_data$Exposure_other, plot = FALSE, alpha = 0.5, lead = 78)$pred
 ```
 
+```{r Save calibrated non-CAT model}
+#non_catastrophe_loss_model_list <- list(Non_CAT_PM = tw_PM_0)
+
+```
 
 
 
@@ -2208,7 +2269,7 @@ Brown_weight <- 0.034 ## Specify the weight allocated to the brown portfolio
 risk_aversion_default <- 0.55 ## Set risk-aversion parameter for premium loading
 Clim_proj_clean <- T ## indicate weather climate projections have been imported and clean; default is true
 scenario_list <- c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5") ## Define the list of SSP scenarios
-col_list <- c("green", "orange", "red", "brown") ## Define the colour used for plotting the simulations
+col_list <- c(green_col, orange_col, red_col, purple_col) ## Define the colour used for plotting the simulations
 ```
 
 
@@ -2326,10 +2387,12 @@ for(i in 1:ncol(tas_noise_mat)){
     shapiro_test_stats <- shapiro.test(tas_noise_mat[, i])
     p_vals_shapiro_tas[i] <- shapiro_test_stats$p.value
 }
-plt <- barplot(p_vals_shapiro_tas, col='steelblue', xaxt="n", main = "p-values for Shapiro-Wilk test (NS residuals)", xlab = "Models", ylab = "p-values")
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Climate/p_values_NS_residuals.pdf")
+plt <- barplot(p_vals_shapiro_tas, col='steelblue', xaxt="n", main = "p-values for Shapiro-Wilk test (NS temperature residuals)", xlab = "Models", ylab = "p-values")
 text(plt, par("usr")[3], labels = Models_ensemble_tas, srt = 60, adj = c(1.1,1.1), xpd = TRUE, cex=0.6)
 abline(h = 0.05, lty = 2, col = "red")
 text("")
+#dev.off()
 ```
 
 
@@ -2387,6 +2450,40 @@ for(s in 1:4){
 colnames(ta_correct_proj_mat) = Models_ensemble_ta
 ta_mean_all_scenarios_corrected_list[[s]] <- ta_correct_proj_mat
 }
+```
+
+Collect the noise and calculate the standard deviations:
+
+```{r Calculate noise and standard deviations for TA residuals}
+ta_noise_mat <- matrix(NA, nrow = nrow(ta_ERA5_ensemble_hist_dat), ncol = length(Models_ensemble_ta))
+ta_quantile_sd <- c()
+ta_hist_sd <- c()
+for(i in 1:length(Models_ensemble_ta)){
+        mod <- Models_ensemble_ta[i]
+        lm_ta <- lm(sort(Air_temperature) ~ sort(ta_ERA5_ensemble_hist_dat[, mod]), data = ta_ERA5_ensemble_hist_dat)
+        ta_model_correct <- lm_ta$coefficients[1] +  lm_ta$coefficients[2]*ta_ERA5_ensemble_hist_dat[, mod]
+        ## Collect the noise of projections: 
+        noise_ta <- ta_ERA5_ensemble_hist_dat$Air_temperature - ta_model_correct
+        ta_noise_mat[, i] <- noise_ta
+        ## Collect the quantile standard deviations:
+        ta_quantile_sd[i] <- summary(lm_ta)$sigma
+        ## Collect the historical standard deviations:
+        ta_hist_sd[i] <- sd(noise_ta)
+    }
+```
+
+```{r Perform shapiro normality test for residuals (Air temperature)}
+p_vals_shapiro_ta <- c()
+for(i in 1:ncol(ta_noise_mat)){
+    shapiro_test_stats <- shapiro.test(ta_noise_mat[, i])
+    p_vals_shapiro_ta[i] <- shapiro_test_stats$p.value
+}
+pdf("/Users/jimli/Documents/DFA codes/Plotting/Climate/p_values_AirTemperature_residuals.pdf")
+plt <- barplot(p_vals_shapiro_ta, col='steelblue', xaxt="n", main = "p-values for Shapiro-Wilk test (Air temperature residuals)", xlab = "Models", ylab = "p-values")
+text(plt, par("usr")[3], labels = Models_ensemble_ta, srt = 60, adj = c(1.1,1.1), xpd = TRUE, cex=0.6)
+abline(h = 0.05, lty = 2, col = "red")
+text("")
+#dev.off()
 ```
 
 
@@ -2447,6 +2544,32 @@ SST_mean_all_scenarios_corrected_list[[s]] <- SST_correct_proj_mat
 }
 ```
 
+```{r Calculate noise and standard deviations for SST residuals}
+SST_noise_mat <- matrix(NA, nrow = nrow(SST_ERA5_ensemble_hist_dat), ncol = length(Models_ensemble_SST))
+SST_quantile_sd <- c()
+SST_hist_sd <- c()
+for(i in 1:length(Models_ensemble_SST)){
+        mod <- Models_ensemble_SST[i]
+        lm_SST <- lm(sort(SST_mean_mm) ~ sort(SST_ERA5_ensemble_hist_dat[, mod]), data = SST_ERA5_ensemble_hist_dat)
+        SST_model_correct <- lm_SST$coefficients[1] +  lm_SST$coefficients[2]*SST_ERA5_ensemble_hist_dat[, mod]
+        ## Collect the noise of projections: 
+        noise_SST <- SST_ERA5_ensemble_hist_dat$SST_mean_mm- SST_model_correct
+        SST_noise_mat[, i] <- noise_SST
+        ## Collect the quantile standard deviations:
+        SST_quantile_sd[i] <- summary(lm_SST)$sigma
+        ## Collect the historical standard deviations:
+        SST_hist_sd[i] <- sd(noise_SST)
+    }
+```
+
+
+```{r QQPlot of SST residuals for each model, fig.height = 7}
+par(mfrow = c(3, 3))
+for(i in 1:ncol(SST_noise_mat)){
+    qqplot(qnorm(ppoints(nrow(SST_noise_mat)), mean = 0, sd = SST_hist_sd[i]), SST_noise_mat[, i], xlab = "Theorectical Quantiles (Normal)", ylab = "Empirical Quantiles", main = "Q-Q plot of SST residuals")
+    abline(0, 1, col = "red", lwd = 2)
+}
+```
 
 
 ```{r Import of SST gradients projections and backcast data}
@@ -2522,16 +2645,18 @@ for(i in 1:ncol(SST_grad_noise_mat)){
 ```
 
 
-```{r Perform shapiro normality test for residuals}
+```{r Perform shapiro normality test for residuals (SST)}
 p_vals_shapiro_SST_grad <- c()
 for(i in 1:ncol(SST_grad_noise_mat)){
     shapiro_test_stats <- shapiro.test(SST_grad_noise_mat[, i])
     p_vals_shapiro_SST_grad[i] <- shapiro_test_stats$p.value
 }
-plt <- barplot(p_vals_shapiro_SST_grad, col='steelblue', xaxt="n", main = "p-values for Shapiro-Wilk test (SST gradients residuals)", xlab = "Models", ylab = "p-values")
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Climate/p_values_SST_residuals.pdf")
+plt <- barplot(p_vals_shapiro_SST_grad, col='steelblue', xaxt="n", main = "p-values for Shapiro-Wilk test (SST residuals)", xlab = "Models", ylab = "p-values")
 text(plt, par("usr")[3], labels = Models_ensemble_SST, srt = 60, adj = c(1.1,1.1), xpd = TRUE, cex=0.6)
 abline(h = 0.05, lty = 2, col = "red")
 text("")
+#dev.off()
 ```
 
 
@@ -2919,10 +3044,12 @@ for(i in 1:ncol(rx5day_noise_mat)){
     shapiro_test_stats <- shapiro.test(rx5day_noise_mat[, i])
     p_vals_shapiro_rx5day[i] <- shapiro_test_stats$p.value
 }
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Climate/p_values_rx5day_residuals.pdf")
 plt <- barplot(p_vals_shapiro_rx5day, col='steelblue', xaxt="n", main = "p-values for Shapiro-Wilk test (rx5day residuals)", xlab = "Models", ylab = "p-values")
 text(plt, par("usr")[3], labels = Models_ensemble_SST, srt = 60, adj = c(1.1,1.1), xpd = TRUE, cex=0.6)
 abline(h = 0.05, lty = 2, col = "red")
 text("")
+#dev.off()
 ```
 
 
@@ -2978,8 +3105,9 @@ GDP_projections_SSP_growth <- data.frame(Year = interpolated_years,
     filter(Year >= 2020)
 
 colnames(GDP_projections_SSP_growth) = colnames(GDP_projections_SSP_converted)
-
 ```
+
+
 
 
 
@@ -3013,6 +3141,7 @@ for(s in 2:4){
     points(x = AU_exposure_projections$Year, y = AU_exposure_projections[, s + 1], col = col_list[s], type = "l")
 }
 ```
+
 
 
 
@@ -3380,7 +3509,7 @@ for(s in 1:4){
 }
 ```
 
-```{r}
+```{r Save simulation results of environmental variables}
 save(DFA_components_all_scenarios, file = "Simulated_results_DFA_components_sims10000_2_Nov_2024.Rdata")
 ```
 
@@ -3459,6 +3588,7 @@ equity_TR_cum_excess_adj_OP_list <- list()
 equity_TR_cum_excess_adj_OP_brown_list <- list()
 Random_shocks_OP_list <- list()
 Random_shocks_TR_op_list <- list()
+Real_GDP_pred_adj_list <- list()
 
 for(s in 1:4){
 ## Define the real GDP forecast and change in brown production:
@@ -3473,6 +3603,7 @@ Random_shocks_op_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
 Random_shocks_TR_op_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
 TR_sims_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
 TR_sims_brown_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+Real_GDP_pred_adj_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
 
 for(i in 1:n.sims){
     ## Get the damage ratios:
@@ -3510,6 +3641,7 @@ for(i in 1:n.sims){
     TR_sims_brown_cum_mat[, i] <- TR_brown_cum 
     Random_shocks_op_mat[, i] <- epsilon_op
     Random_shocks_TR_op_mat[, i] <- epsilon_TR
+    Real_GDP_pred_adj_mat[, i] <- Real_GDP_pred_adj_growth
 }
 equity_TR_excess_adj_OP_list[[s]] <- TR_sims_mat
 equity_TR_excess_adj_OP_brown_list[[s]] <- TR_sims_mat_Brown
@@ -3518,8 +3650,15 @@ equity_TR_cum_excess_adj_OP_list[[s]] <- TR_sims_cum_mat
 equity_TR_cum_excess_adj_OP_brown_list[[s]] <- TR_sims_brown_cum_mat
 Random_shocks_OP_list[[s]] <- Random_shocks_op_mat
 Random_shocks_TR_op_list[[s]] <- Random_shocks_TR_op_mat
+Real_GDP_pred_adj_list[[s]] <- Real_GDP_pred_adj_mat
 }
 ```
+
+```{r Save simulation results of asset module}
+asset_module_output_list <- list(general_portfolio = equity_TR_excess_adj_OP_list, brown_portfolio = equity_TR_excess_adj_OP_brown_list, adjusted_GDP_growth = Real_GDP_pred_adj_list)
+save(asset_module_output_list, file = "results/Simulated_results_asset_module_sims10000.Rdata")
+```
+
 
 
 ```{r Also derive the adjusted consumption growth}
@@ -3943,6 +4082,13 @@ Storm_loss_pred_dat_yy <- Storm_loss_pred_dat %>% group_by(Year) %>% summarise(`
 ECL_loss_pred_dat_yy <- ECL_loss_pred_dat %>% group_by(Year) %>% summarise(`SSP 2.6` = sum(`SSP 2.6`), `SSP 4.5` = sum(`SSP 4.5`), `SSP 7.0` = sum(`SSP 7.0`), `SSP 8.5` = sum(`SSP 8.5`)) 
 ## HS:
 HS_loss_pred_dat_yy <- HS_loss_pred_dat %>% group_by(Year) %>% summarise(`SSP 2.6` = sum(`SSP 2.6`), `SSP 4.5` = sum(`SSP 4.5`), `SSP 7.0` = sum(`SSP 7.0`), `SSP 8.5` = sum(`SSP 8.5`)) 
+```
+
+```{r Save expected CAT claims cost}
+expected_CAT_norm_claims_list <- list(Flood = Flood_loss_pred, Bushfire = Bushfire_loss_pred,
+                                 TC = TC_loss_pred_dat_yy, Storm = Storm_loss_pred_dat_yy,
+                                 ECL = ECL_loss_pred_dat_yy, HS = HS_loss_pred_dat_yy)
+save(expected_CAT_norm_claims_list, file = "results/Expected_CAT_claims_cost_normalised.Rdata")
 ```
 
 
@@ -4694,7 +4840,7 @@ Plot of simulation results for climate module:
 
 - This generates Figure 3.1 shown in the paper. 
 
-```{r Plot of simulation results for climate module, fig.height = 7}
+```{r Plot of simulation results for climate module}
 #par(mfrow = c(2,2))
 ##Define horizon to show:
 horizon <- 38
@@ -4702,26 +4848,27 @@ start_year <- 2023
 #pdf("Plotting/Climate/ClimateSimulations.pdf")
 par(mfrow = c(3, 2))
 ##Near-surface temperature:
-plot_quantiles_scenario(NS_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Near-surface temperature", main = "Near-surface temperature", y_range = c(20, 28), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.38, lty = c(1,1,1,1))
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+plot_quantiles_scenario(NS_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Near-surface temperature", y_range = c(21, 27), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.8, lty = c(1,1,1,1), lwd = rep(2, 4))
 # ##Air temperature:
-# plot_quantiles_scenario(Air_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Air temperature", main = "Atmospheric temperature", y_range = c(-36, -30), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-# legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.38, lty = c(1,1,1,1))
+# plot_quantiles_scenario(Air_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Air temperature", main = "Atmospheric temperature", y_range = c(-36, -30), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+# legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.38, lty = c(1,1,1,1))
 ##SST:
-plot_quantiles_scenario(SST_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Sea-surface temperature", main = "SST", y_range = c(24, 28), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.38, lty = c(1,1,1,1))
+plot_quantiles_scenario(SST_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "SST", y_range = c(24, 27), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.38, lty = c(1,1,1,1))
 ##SST gradients
-plot_quantiles_scenario(SST_grad_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Sea-surface temperature gradients", main = "SST gradients", y_range = c(-2.5, 0.5), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.38, lty = c(1,1,1,1))
+plot_quantiles_scenario(SST_grad_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "SST gradients", y_range = c(-2.1, -0.5), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.38, lty = c(1,1,1,1))
 #MSLP
-plot_quantiles_scenario(MSLP_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "MSLP", main = "MSLP", y_range = c(101100, 101900), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.38, lty = c(1,1,1,1))
+plot_quantiles_scenario(MSLP_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "MSLP", y_range = c(101150, 101600), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.38, lty = c(1,1,1,1))
 ##FWI
-plot_quantiles_scenario(mfwixx_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "mfwixx", main = "Extreme FWI", y_range = c(80, 170), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.38, lty = c(1,1,1,1))
+plot_quantiles_scenario(mfwixx_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Extreme FWI", y_range = c(90, 140), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.38, lty = c(1,1,1,1))
 ##rx5day
-plot_quantiles_scenario(rx5day_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "rx5day", main = "Extreme precipitation", y_range = c(30, 210), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.38, lty = c(1,1,1,1))
+plot_quantiles_scenario(rx5day_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Extreme precipitation", y_range = c(25, 160), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.38, lty = c(1,1,1,1))
 #dev.off()
 ```
 
@@ -4785,34 +4932,99 @@ Plot of simulation results for hazard losses:
 
 - This generates Figure 3.2 shown in the paper.
 
-```{r Plot of simulation results for hazard losses, fig.height = 7}
+```{r Plot of simulation results for hazard losses}
 #pdf("Plotting/Hazards/Simulations_individual_hazard_losses.pdf")
 par(mfrow = c(3, 2))
 horizon <- 38
 #y_range_hazard_sev <- c(0,1.4e10)
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
 ## Flood
-plot_quantiles_scenario(Flood_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Flood losses", main = "Flood losses (normalised)", y_range = c(0, 3e10), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(Flood_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Flood losses (normalised)", y_range = c(0, 2.5e10), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.8, lty = c(1,1,1,1), lwd = rep(2, 4))
 
 ## Bushfire
-plot_quantiles_scenario(Bushfire_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Bushfire losses", main = "Bushfires losses (normalised)", y_range = c(0, 4e9), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(Bushfire_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Bushfires losses (normalised)", y_range = c(0, 3e9), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
 ## TC
-plot_quantiles_scenario(TC_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "TC losses", main = "Tropical cyclones losses (normalised)", y_range = c(0, 2e10), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(TC_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Tropical cyclones losses (normalised)", y_range = c(0, 1.8e10), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
 ## Storm
-plot_quantiles_scenario(Storm_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Storms losses", main = "Storm losses (normalised)", y_range = c(0, 2e9), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(Storm_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Storm losses (normalised)", y_range = c(0, 1.8e9), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
 ## ECL
-plot_quantiles_scenario(ECL_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "ECL losses", main = "East Coast Lows losses (normalised)", y_range = c(0, 1e9), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(ECL_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "East Coast Lows losses (normalised)", y_range = c(0, 9e8), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
 ## Hailstorms
-plot_quantiles_scenario(Hailstorm_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Hailstorms losses", main = "Hailstorm losses (normalised)", y_range = c(0, 3e9), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(Hailstorm_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Hailstorm losses (normalised)", y_range = c(0, 2.5e9), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
 #dev.off()
 ```
 
 
+```{r Extended projection period for Bushfire loss}
+#pdf("Plotting/Hazards/Simulations_Bushfire_losses_extended.pdf")
+## Bushfire
+plot_quantiles_scenario(Bushfire_loss_quantiles_list , forecast_periods = start_year:(start_year+78 - 1), var_name = "Values", main = "Bushfires losses (normalised)", y_range = c(0, 4.5e9), colour_list = col_list, horizon = 78, transparency = 0.1, label_percents = F)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.8, lty = c(1,1,1,1), lwd = rep(2, 4))
+#dev.off()
+```
+
+```{r Calculate the projected increase in bushfire loss by 2100}
+horizon_end <- 78
+
+paste("Percentage increase in Bushfire loss in SSP 8.5 relative to its starting value (mean):", Bushfire_loss_quantiles_list[[4]][2, horizon_end]/Bushfire_loss_quantiles_list[[4]][2, 1] - 1)
+paste("Percentage increase in Bushfire loss in SSP 8.5 relative to SSP 2.6 (mean):", Bushfire_loss_quantiles_list[[4]][2, horizon_end]/Bushfire_loss_quantiles_list[[1]][2, horizon_end] - 1)
+paste("Percentage increase in Bushfire loss in SSP 8.5 relative to its starting value (95th quantile):", Bushfire_loss_quantiles_list[[4]][3, horizon_end]/Bushfire_loss_quantiles_list[[4]][3, 1] - 1)
+paste("Percentage increase in Bushfire loss in SSP 8.5 relative to SSP 2.6 (95th quantile):", Bushfire_loss_quantiles_list[[4]][3, horizon_end]/Bushfire_loss_quantiles_list[[1]][3, horizon_end] - 1)
+```
+
+
+```{r Investigation of the peaks in the flood loss simulations}
+par(mfrow = c(2, 2))
+horizon <- 38
+#y_range_hazard_sev <- c(0,1.4e10)
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+# Plot the 99.5th quantile: 
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Hazards/Extreme_precipitation_SSP85_95quantile.pdf")
+### Plot rx5day: 
+plot(x = start_year:(start_year+horizon - 1), y = rx5day_quantiles_list[[4]][3, 1:horizon], lty = 2, lwd = 2, col = col_list[4], type = "l", xlab = "Forecast Period", main = "Extreme precipitation (rx5day)", ylab = "Values")
+abline(v = start_year+ which.max(Flood_loss_quantiles_list[[4]][2, 1:horizon]) - 1, lty = 4, lwd = 2, col = "red")
+legend("topleft", legend = c("95th quantile (SSP 8.5)"), lty = 2, lwd = 2, col = col_list[4], cex = 0.7)
+#dev.off()
+### Plot flood loss: 
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Hazards/Flood_loss_SSP85_95quantile.pdf")
+plot(x = start_year:(start_year+horizon - 1), y = Flood_loss_quantiles_list[[4]][3, 1:horizon], lty = 2, lwd = 2, col = col_list[4], type = "l", ylim = c(min(Flood_loss_quantiles_list[[4]][2, 1:horizon]), max(Flood_loss_quantiles_list[[4]][3, 1:horizon])), xlab = "Forecast Period", main = "Flood loss", ylab = "Values")
+abline(v = start_year+ which.max(Flood_loss_quantiles_list[[4]][2, 1:horizon]) - 1, lty = 4, lwd = 2, col = "red")
+legend("topleft", legend = c("95th quantile (SSP 8.5)"), lty = 2, lwd = 2, col = col_list[4], cex = 0.7)
+#dev.off()
+
+# Plot the mean
+### Plot rx5day: 
+plot(x = start_year:(start_year+horizon - 1), y = rx5day_quantiles_list[[4]][2, 1:horizon], lty = 1, lwd = 2, col = col_list[4], type = "l", xlab = "Forecast Period", main = "Extreme precipitation (rx5day)", ylab = "Values")
+abline(v = start_year+ which.max(Flood_loss_quantiles_list[[4]][2, 1:horizon]) - 1, lty = 4, lwd = 2, col = "red")
+legend("topleft", legend = c("Mean (SSP 8.5)"), lty = 1, lwd = 2, col = col_list[4], cex = 0.7)
+### Plot flood loss: 
+plot(x = start_year:(start_year+horizon - 1), y = Flood_loss_quantiles_list[[4]][2, 1:horizon], lty = 1, lwd = 2, col = col_list[4], type = "l", xlab = "Forecast Period", main = "Flood loss", ylab = "Values")
+abline(v = start_year+ which.max(Flood_loss_quantiles_list[[4]][2, 1:horizon]) - 1, lty = 4, lwd = 2, col = "red")
+legend("topleft", legend = c("Mean (SSP 8.5)"), lty = 1, lwd = 2, col = col_list[4], cex = 0.7)
+```
+
+
+
+```{r Benchmarking of ECL freqeuncy}
+delta_ECL_count_2060 <- c()
+for(s in 1:4){
+   delta_ECL_count_2060[s] <- ECL_count_quantiles_list[[s]][2, horizon]/ECL_count_quantiles_list[[s]][2, 1] - 1
+}
+
+delta_ECL_count_2040 <- c()
+for(s in 1:4){
+   delta_ECL_count_2040[s] <- ECL_count_quantiles_list[[s]][2, horizon - 20]/ECL_count_quantiles_list[[s]][2, 1] - 1
+}
+
+paste("Change in ECL frequency (SSP 8.5; 2060; 3 degree rise:)", delta_ECL_count_2060[4])
+paste("Change in ECL frequency (SSP 8.5; 2040; 2 degree rise:)", delta_ECL_count_2040[4])
+```
 
 
 
@@ -4829,6 +5041,9 @@ inflation_rates_cum_all_scenarios_list <- list()
 log_investment_returns_nominal_all_scenarios_list <- list()
 log_inflation_rates_cum_all_scenarios_list <- list()
 log_consumption_growth_cum_all_scenarios_list <- list()
+log_equity_returns_nominal_general_cum_list <- list()
+log_equity_returns_nominal_brown_cum_list <- list()
+log_equity_returns_nominal_cum_list <- list()
 for(s in 1:4){
     investment_returns_real_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
     investment_returns_nominal_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
@@ -4837,6 +5052,9 @@ for(s in 1:4){
     log_inflation_rates_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
     log_consumption_growth_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
     investment_returns_nominal_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    log_equity_returns_nominal_general_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    log_equity_returns_nominal_brown_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    log_equity_returns_nominal_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
     for(i in 1:n.sims){
          ## Get the inflation rates:
          Short_rates_real <-  DFA_components_all_scenarios[[s]]$MEV_module$Real_rates[, i]
@@ -4847,16 +5065,24 @@ for(s in 1:4){
          brown_return <- equity_TR_excess_adj_OP_brown_list[[s]][, i]
          other_return <- equity_TR_excess_adj_OP_list[[s]][, i]
          
+         
          ## Get the excess equity return:
          equity_return_excess <- Brown_weight*brown_return + (1-Brown_weight)*other_return
          #### Get the nominal equity return: 
          equity_return <- pmax(equity_return_excess + Short_rates_real, -1)
          equity_return_nominal <- pmax(equity_return_excess + Short_rates_nominal, -1)
+         equity_return_nominal_general <- pmax(other_return + Short_rates_nominal, -1)
+         equity_return_nominal_brown <- pmax(brown_return + Short_rates_nominal, -1)
          ## Get the total return
          investment_return_real <- Risk_free_weight_default*Short_rates_real + (1-Risk_free_weight_default)*equity_return
          investment_return_nominal <- Risk_free_weight_default*Short_rates_nominal + (1-Risk_free_weight_default)*equity_return_nominal
+         
+         ## Get the cumulative equity returns:
+         log_equity_returns_nominal_general_cum_mat[, i] <- log(cumprod(1 + equity_return_nominal_general))
+         log_equity_returns_nominal_brown_cum_mat[, i] <- log(cumprod(1 + equity_return_nominal_brown))
         
          ## Get the cumulative real and nominal investment returns:
+         log_equity_returns_nominal_cum_mat[, i] <- log(cumprod(1 + equity_return_nominal))
          investment_returns_real_cum_mat[, i] <- cumprod(1 + investment_return_real) - 1
          investment_returns_nominal_cum_mat[, i] <- cumprod(1 + investment_return_nominal) - 1
          investment_returns_nominal_mat[, i] <- investment_return_nominal
@@ -4867,6 +5093,10 @@ for(s in 1:4){
          ## Get the cumulative consumption growth:
          log_consumption_growth_cum_mat[, i] <- log(cumprod(1 + consumption_growth))
     }
+
+log_equity_returns_nominal_cum_list[[s]] <- log_equity_returns_nominal_cum_mat  
+log_equity_returns_nominal_general_cum_list[[s]] <- log_equity_returns_nominal_general_cum_mat
+log_equity_returns_nominal_brown_cum_list[[s]] <- log_equity_returns_nominal_brown_cum_mat
 investment_returns_real_all_scenarios_list[[s]] <- investment_returns_real_cum_mat
 investment_returns_nominal_all_scenarios_list[[s]] <- investment_returns_nominal_cum_mat
 investment_returns_rates_nominal_all_scenarios_list[[s]] <- investment_returns_nominal_mat
@@ -4878,15 +5108,19 @@ log_consumption_growth_cum_all_scenarios_list[[s]] <- log_consumption_growth_cum
 ```
 
 ```{r Derive the cumulative economic growth and adjusted growth}
+gdp_potential_growth_mat <- matrix(NA, nrow = forecast_horizon, ncol = 4)
 log_gdp_potential_cum_growth_mat <- matrix(NA, nrow = forecast_horizon, ncol = 4)
 log_consumption_cum_growth_quantiles_all_scenarios_list <- list()
 log_consumption_cum_median_all_scenarios_mat <- matrix(NA, nrow = forecast_horizon, ncol = 4)
+Adj_consumption_growth_quantiles_all_scenarios_list <- list()
 for(s in 1:4){
     ## Derive the base economic growth:
     gdp_growth_base <- na.omit(Real_GDP_forecasts_all[, s]/lag(Real_GDP_forecasts_all[, s])-1)[2:(forecast_horizon + 1)]
     log_gdp_potential_cum_growth_mat[, s] <- log(cumprod(1 + gdp_growth_base))
+    gdp_potential_growth_mat[, s] <- gdp_growth_base
     ## Derive the adjusted economic growth:
     log_consumption_cum_growth_quantiles_all_scenarios_list[[s]] <-  apply(log_consumption_growth_cum_all_scenarios_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x[is.finite(x) == T], quantile_low = 0.005, quantile_high = 0.995))
+    Adj_consumption_growth_quantiles_all_scenarios_list[[s]] <- apply(Adj_consumption_growth_list[[s]], MARGIN = 1, FUN = function(x) multi_func_withMed2(x[is.finite(x) == T], quantile_low = 0.05, quantile_high = 0.95))
     log_consumption_cum_median_all_scenarios_mat[, s] <- apply(log_consumption_growth_cum_all_scenarios_list[[s]], MARGIN = 1, FUN = median)
 }
 ```
@@ -4910,17 +5144,22 @@ log_investment_returns_nominal_median_all_scenarios_mat <- matrix(NA, nrow = for
 log_inflation_cum_quantiles_all_scenarios_list <- list()
 log_inflation_cum_median_all_scenarios_mat <- matrix(NA, nrow = forecast_horizon, ncol = 4)
 
-
+log_equity_returns_nominal_general_quantiles_all_scenarios_list <- list()
+log_equity_returns_nominal_brown_quantiles_all_scenarios_list <- list()
+log_equity_returns_nominal_cum_quantiles_all_scenarios_list <- list()
 for(s in 1:4){
     ## Calculate real cumulative investment returns:
     investment_returns_real_quantiles_all_scenarios_list[[s]] <-  apply(investment_returns_real_all_scenarios_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
     investment_returns_real_median_all_scenarios_mat[, s] <- apply(investment_returns_real_all_scenarios_list[[s]], MARGIN = 1, FUN = median)
+    log_equity_returns_nominal_cum_quantiles_all_scenarios_list[[s]] <- apply(log_equity_returns_nominal_cum_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x[is.finite(x) == T], quantile_low = 0.05, quantile_high = 0.95))
     ## Calculate nominal cumulative investment returns:
     investment_returns_nominal_quantiles_all_scenarios_list[[s]] <-  apply(investment_returns_nominal_all_scenarios_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
     investment_returns_nominal_median_all_scenarios_mat[, s] <- apply(investment_returns_nominal_all_scenarios_list[[s]], MARGIN = 1, FUN = median)
     ## Calculate log compounded investment returns:
     log_investment_returns_nominal_quantiles_all_scenarios_list[[s]] <- apply(log_investment_returns_nominal_all_scenarios_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
     log_investment_returns_nominal_median_all_scenarios_mat[, s] <- apply(log_investment_returns_nominal_all_scenarios_list[[s]], MARGIN = 1, FUN = median)
+    log_equity_returns_nominal_general_quantiles_all_scenarios_list[[s]] <- apply(log_equity_returns_nominal_general_cum_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+     log_equity_returns_nominal_brown_quantiles_all_scenarios_list[[s]] <- apply(log_equity_returns_nominal_brown_cum_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
     ## Calculate cumulative inflation rates:
     inflation_cum_quantiles_all_scenarios_list[[s]] <-  apply(inflation_rates_cum_all_scenarios_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
     inflation_cum_median_all_scenarios_mat[, s] <- apply(inflation_rates_cum_all_scenarios_list[[s]], MARGIN = 1, FUN = median)
@@ -4939,8 +5178,8 @@ Plot the mean and the uncertainty range of log-sale of cumulative investment ret
 ```{r Plot the quantile range of log-sale of cumulative investment returns (horizon up to 2060), fig.height = 3}
 horizon <- 38
 #pdf("Plotting/Asset/Simulations_cum_investment_returns_2060.pdf")
-plot_quantiles_scenario(log_investment_returns_nominal_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Cumulative returns (log)", main = "Cumulative investment returns (log-scale)", y_range = c(-0.2, 5), colour_list = c("green", "orange", "red", "brown"), horizon = horizon , transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(log_investment_returns_nominal_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Cumulative returns (log)", main = "Cumulative investment returns (log-scale)", y_range = c(-0.2, 5), colour_list = col_list, horizon = horizon , transparency = 0.1, label_percents = F, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, mean_lwd = 4, quantiles_lwd = 2)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ```
 
@@ -4952,11 +5191,37 @@ Plot the log-scale cumulative consumption growth:
 ```{r Plot the log-scale cumulative consumption growth (horizon up to 2060), fig.height = 3}
 ## Plot of compounded economic growth:
 #pdf("Plotting/Asset/Log_compound_economic_growth.pdf")
-plot(x = start_year:(start_year + horizon - 1), y =  log_gdp_potential_cum_growth_mat[1:horizon, 1], col = col_list[1], type = "l", ylim = c(0, 1.5), xlab = "Years", ylab = "Compounded growth (log)", main = "Compounded economic growth (log)")
+plot(x = start_year:(start_year + horizon - 1), y =  log_gdp_potential_cum_growth_mat[1:horizon, 1], col = col_list[1], type = "l", ylim = c(0, 1.5), xlab = "Years", ylab = "Compounded growth (log)", main = "Compounded economic growth (log)", cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
 for(s in 2:4){
-    points(x = start_year:(start_year + horizon - 1), y =  log_gdp_potential_cum_growth_mat[1:horizon, s], col = col_list[s], type = "l")
+    points(x = start_year:(start_year + horizon - 1), y =  log_gdp_potential_cum_growth_mat[1:horizon, s], col = col_list[s], type = "l", lwd = 3)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+#dev.off()
+```
+
+
+```{r Plot the GDP data}
+col_list <- col_list
+horizon_total <- 78
+################################################################################
+########## Plot the Log Economic Projections ###################################
+################################################################################
+plot(x = start_year:(start_year + horizon_total - 1), y =  log(GDP_projections_SSP_interpolate[-c(1:2), 2]), col = col_list[1], type = "l", lwd = 2, ylim = c(28.5, 31), xlab = "Years", ylab = "GDP (log-scale)", main = "Gross domestic product (log-scale) in Australia (in real terms)")
+for(s in 2:3){
+points(x = start_year:(start_year + horizon_total - 1), y = log(GDP_projections_SSP_interpolate[-c(1:2), s + 1]), col = col_list[s], type = "l", lwd = 2)
+}
+points(x = start_year:(start_year + horizon_total - 1), y = log(GDP_projections_SSP_interpolate[-c(1:2), 6]), col = col_list[4], type = "l", lwd = 2)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
+################################################################################
+########## Plot the Total Economic Projections ###################################
+################################################################################
+#pdf("Plotting/Asset/RealGDP_Australia.pdf")
+plot(x = start_year:(start_year + horizon_total - 1), y =  (GDP_projections_SSP_interpolate[-c(1:2), 2]), col = col_list[1], type = "l", lwd = 2, ylim = c(0, max(GDP_projections_SSP_interpolate[-c(1:2), 6])), xlab = "Years", ylab = "GDP", main = "Gross domestic product in Australia (in real terms)")
+for(s in 2:3){
+points(x = start_year:(start_year + horizon_total - 1), y = (GDP_projections_SSP_interpolate[-c(1:2), s + 1]), col = col_list[s], type = "l", lwd = 2)
+}
+points(x = start_year:(start_year + horizon_total - 1), y = (GDP_projections_SSP_interpolate[-c(1:2), 6]), col = col_list[4], type = "l", lwd = 2)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
 #dev.off()
 ```
 
@@ -4968,7 +5233,9 @@ Calculate the mean and uncertainty range of the simulated damage ratios:
 #quantiles_liabilities <- c(0.05, 0.5, 0.95)
 Eco_damage_ratio_quantiles_list <- list()
 Total_damage_ratio_quantiles_list <- list()
+Insure_damage_ratio_quantiles_list <- list()
 for(s in 1:4){
+    Insure_damage_ratio_quantiles_list[[s]] <- apply(DFA_components_all_scenarios[[s]]$Liabilities_module$CAT_damage_ratio, MARGIN = 1, FUN = function(x) multi_func(x))
    Eco_damage_ratio_quantiles_list[[s]] <- apply(DFA_components_all_scenarios[[s]]$Liabilities_module$CAT_damage_ratio * Total_damage_scalar_mean, MARGIN = 1, FUN = function(x) multi_func(x)) 
    Total_damage_ratio_quantiles_list[[s]] <- apply(DFA_components_all_scenarios[[s]]$Liabilities_module$CAT_damage_ratio * Eco_damage_scalar_mean, MARGIN = 1, FUN = function(x) multi_func(x)) 
 }
@@ -4982,15 +5249,101 @@ Plot the uninsured damage ratios and total damage ratios:
 horizon <- 38
 ##  Uninsured damage ratio: 
 #pdf("Plotting/Asset/Uninsured_damage_ratios_2060.pdf")
-plot_quantiles_scenario_2(Eco_damage_ratio_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Damage ratios", main = "Ratios of uninsured damage to GDP", y_range = c(0, 0.02), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = T, step_plot_perc = 0.005)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario_2(Eco_damage_ratio_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Damage ratios", main = "Ratios of uninsured damage to GDP", y_range = c(0, 0.02), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = T, step_plot_perc = 0.005, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4, lwd_quantiles = 3)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ## Total damage ratios:
 #pdf("Plotting/Asset/Total_damage_ratios_2060.pdf")
-plot_quantiles_scenario_2(Total_damage_ratio_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Damage ratios", main = "Ratios of total damage to GDP", y_range = c(0, 0.03), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = T, step_plot_perc = 0.005)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario_2(Total_damage_ratio_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Damage ratios", main = "Ratios of total damage to GDP", y_range = c(0, 0.03), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = T, step_plot_perc = 0.005, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4, lwd_quantiles = 3)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ```
+
+Plot the cumulative investment returns for brown and the general portfolio: 
+
+```{r Plot the cumulative equity returns for brown and general portfolios}
+#pdf("Plotting/Asset/Simulations_cum_Brown_investment_returns_2060.pdf")
+## Brown portfolios: 
+plot_quantiles_scenario( log_equity_returns_nominal_general_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Cumulative returns (log)", main = "Cumulative equity returns (brown portfolio; log-scale)", y_range = c(-0.2, 7), colour_list = col_list, horizon = horizon , transparency = 0.1, label_percents = F, cex.main = 1, cex.lab = 1.5, cex.axis = 1.5, mean_lwd = 4, quantiles_lwd = 2)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+#dev.off()
+
+#pdf("Plotting/Asset/Simulations_cum_General_investment_returns_2060.pdf")
+## General portfolios
+plot_quantiles_scenario( log_equity_returns_nominal_brown_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Cumulative returns (log)", main = "Cumulative investment returns (general portfolio; log-scale)", y_range = c(-0.2, 7), colour_list = col_list, horizon = horizon , transparency = 0.1, label_percents = F, cex.main = 1, cex.lab = 1.5, cex.axis = 1.5, mean_lwd = 4, quantiles_lwd = 2)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+#dev.off()
+## Comparison of mean (cumulative): 
+#plot(x = start_year:(start_year+ 78 - 1), y = log_equity_returns_nominal_general_quantiles_all_scenarios_list[[1]][2, ], lwd = 3, col = col_list[1], type = "l")
+#points(x = start_year:(start_year+ 78 - 1), y =log_equity_returns_nominal_brown_quantiles_all_scenarios_list[[1]][2, ], lwd = 3, col = col_list[1], type = "l", lty = 2)
+```
+
+```{r Compare the mean ecess returns}
+## Derive the mean excess returns:
+equity_TR_excess_quantiles_all_scenarios_list <- list()
+equity_TR_excess_brown_quantiles_all_scenarios_list <- list()
+for(s in 1:4){
+    equity_TR_excess_quantiles_all_scenarios_list[[s]] <- apply(equity_TR_excess_adj_OP_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x))
+    equity_TR_excess_brown_quantiles_all_scenarios_list[[s]] <- apply(equity_TR_excess_adj_OP_brown_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x))
+}
+## Plot the mean excess return across scenarios:
+plot(x = start_year:(start_year+ horizon - 1), y = equity_TR_excess_quantiles_all_scenarios_list[[1]][2, 1:horizon], type = "l", col = col_list[1], lty = 1, lwd = 2, ylim = c(0.05, 0.07), xlab = "Years", ylab = "Returns", main = "Equity returns: brown vs. general portfolios")
+points(x = start_year:(start_year+ horizon - 1), y =equity_TR_excess_brown_quantiles_all_scenarios_list[[1]][2, 1:horizon], type = "l", col = col_list[1], lty = 2, lwd = 2)
+for(s in 2:4){
+    points(x = start_year:(start_year+ horizon - 1), y =equity_TR_excess_quantiles_all_scenarios_list[[s]][2, 1:horizon], type = "l", col = col_list[s], lty = 1, lwd = 2)
+    points(x = start_year:(start_year+ horizon - 1), y =equity_TR_excess_brown_quantiles_all_scenarios_list[[s]][2, 1:horizon], type = "l", col = col_list[s], lty = 2, lwd = 2)
+}
+legend("topright", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+## Plot the relative difference in mean excess returns between general and brown portfolios: 
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Asset/Relative_returns_differrence_brownVsGeneral.pdf")
+plot(x = start_year:(start_year+ horizon - 1), y = equity_TR_excess_brown_quantiles_all_scenarios_list[[1]][2, 1:horizon]/equity_TR_excess_quantiles_all_scenarios_list[[1]][2, 1:horizon] -1, type = "l", col = col_list[1], lty = 1, lwd = 3, ylim = c(-0.05, 0.05), xlab = "Years", ylab = "Relative difference", main = "Relative return difference: brown vs. general portfolios (%)", yaxt = "n")
+for(s in 2:4){
+    points(x = start_year:(start_year+ horizon - 1), y = equity_TR_excess_brown_quantiles_all_scenarios_list[[s]][2, 1:horizon]/equity_TR_excess_quantiles_all_scenarios_list[[s]][2, 1:horizon] -1, type = "l", col = col_list[s], lty = 1, lwd = 3)
+}
+axis(2, at = pretty(c(-0.05, 0, 0.05)), labels = paste0(pretty(c(-0.05, 0, 0.05)) * 100, "%"))
+legend("topright", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list,  lty = c(1,1,1,1), lwd = rep(4, 4), cex = 0.9)
+dev.off()
+```
+
+```{r Comparison of climate-adjusted economic growth and the potential growh}
+## Compare the absolute values: 
+plot(gdp_potential_growth_mat[2:(horizon+1), 1], type = "l", lwd = 3, lty = 1, col = col_list[1],  ylim = c(-0.01, 0.05))
+points(Adj_consumption_growth_quantiles_all_scenarios_list[[1]][4, 2:(horizon+1)], type = "l", lwd = 3, lty = 2, col = col_list[1])
+points(Adj_consumption_growth_quantiles_all_scenarios_list[[1]][1, 2:(horizon+1)], type = "l", lwd = 3, lty = 3, col = col_list[1])
+for(s in 2:4){
+    points(gdp_potential_growth_mat[2:(horizon+1), s], type = "l", lwd = 3, lty = 1, col = col_list[s])
+points(Adj_consumption_growth_quantiles_all_scenarios_list[[s]][4, 2:(horizon+1)], type = "l", lwd = 3, lty = 2, col = col_list[s])
+points(Adj_consumption_growth_quantiles_all_scenarios_list[[s]][1, 2:(horizon+1)], type = "l", lwd = 3, lty = 3, col = col_list[s])
+}
+## Smooth the relative percentage difference: 
+smooth_adj_consumption_growth_mean_mat <- matrix(NA, nrow = horizon, ncol = 4)
+smooth_adj_consumption_growth_5quantile_mat <- matrix(NA, nrow = horizon, ncol = 4)
+for(s in 1:4){
+    ## Smooth the mean: 
+    adj_growth_mean <- Adj_consumption_growth_quantiles_all_scenarios_list[[s]][4, 2:(horizon+1)]/gdp_potential_growth_mat[2:(horizon+1), s] - 1
+    fit_growth_mean <- smooth.spline(1:horizon, adj_growth_mean, spar = 0.9)
+    ## Smooth the 5th quantile: 
+    adj_growth_VaR5 <- Adj_consumption_growth_quantiles_all_scenarios_list[[s]][1, 2:(horizon+1)]/gdp_potential_growth_mat[2:(horizon+1), s] - 1
+     fit_growth_VaR5 <- smooth.spline(1:horizon, adj_growth_VaR5, spar = 0.8)
+    ## Store the results: 
+    smooth_adj_consumption_growth_mean_mat[, s] <- predict(fit_growth_mean)$y
+    smooth_adj_consumption_growth_5quantile_mat[, s] <- predict(fit_growth_VaR5)$y
+}
+
+## Plot the relative difference:
+### Mean path: 
+plot(smooth_adj_consumption_growth_mean_mat[, 1], type = "l", lwd = 3, lty = 1, col = col_list[1], ylim = c(-0.4,0.1))
+for(s in 2:4){
+    points(smooth_adj_consumption_growth_mean_mat[, s], type = "l", lwd = 3, lty = 1, col = col_list[s])
+}
+ points(smooth_adj_consumption_growth_5quantile_mat[, 4], type = "l", lwd = 3, lty = 2, col = col_list[4])
+### 5th percentile:
+# plot(smooth_adj_consumption_growth_5quantile_mat[, 1], type = "l", lwd = 3, lty = 1, col = col_list[1], ylim = c(-0.5,0.3))
+# for(s in 2:4){
+#     points(smooth_adj_consumption_growth_5quantile_mat[, s], type = "l", lwd = 3, lty = 1, col = col_list[s])
+# }
+```
+
 
 Benchmarking analysis: 
 
@@ -5017,8 +5370,8 @@ Damage_ratios_DICE2016 <- data.frame(Year = interpolated_years,
 ```{r Plot the simulated damage ratios in comparison with the damage ratios projected from DICE model}
 horizon <- 38
 #pdf("Plotting/Benchmarking/Damage_ratios_comparison.pdf")
-plot_quantiles_scenario_2(Total_damage_ratio_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Damage ratios", main = "Ratios of total damage to GDP", y_range = c(0, 0.04), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = T, step_plot_perc = 0.005, quantile_lines = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5", "Baseline (DICE-2023)", "Cost-benefit optimal (DICE-2023)", "2°C Target", "Baseline (DICE-2016)", "Cost-benefit optimal (DICE-2016)"), col = c("green", "orange", "red", "brown", "#FF6347", "#FFB347", "#228B22","#FF6347", "#FFB347"), cex = 0.6, lty = c(1,1,1,1, 1, 1, 1, 2, 2), pch = c(rep(NA, 4), rep(16, 3), rep(17, 2)))
+plot_quantiles_scenario_2(Total_damage_ratio_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Damage ratios", main = "Ratios of total damage to GDP", y_range = c(0, 0.04), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = T, step_plot_perc = 0.005, quantile_lines = F, lwd_mean = 4)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5", "Baseline (DICE-2023)", "Cost-benefit optimal (DICE-2023)", "2°C Target", "Baseline (DICE-2016)", "Cost-benefit optimal (DICE-2016)"), col = c(col_list, "#FF6347", "#FFB347", "#228B22","#FF6347", "#FFB347"), cex = 0.6, lty = c(1,1,1,1, 1, 1, 1, 2, 2), pch = c(rep(NA, 4), rep(16, 3), rep(17, 2)), lwd = c(rep(4, 4), rep(NA, 5)))
 ## Add the comparison to DICE model
 points(Damage_ratios_DICE2023$Year, Damage_ratios_DICE2023$Damage_BASE, col = "#FF6347", type = "o", pch = 16)
 points(Damage_ratios_DICE2023$Year, Damage_ratios_DICE2023$Damage_Opt, col = "#FFB347", type = "o", pch = 16)
@@ -5035,18 +5388,17 @@ Plot the normalised gross CAT premiums below:
 
 - This generates Figure 3.7 in Section 3.2.3.
 
-```{r Calculate the normalised gross premiums, fig.height = 7}
-col_list <- c("green", "orange", "red", "brown")
+```{r Calculate the normalised gross premiums}
 #par(mfrow = c(4, 1))
 horizon <- 38
 
 #pdf("Plotting/Premiums/Gross_CAT_premiums_normalised_2060.pdf")
 ## Plot the gross CAT premiums:
-plot(x = start_year_proj:(start_year_proj + horizon - 1), y = gross_premium_CAT_norm_mat[1:horizon, 1], type = "l", col = col_list[1], xlab = "Years", ylab = "Premiums", main = "Gross CAT premiums (normalised)", ylim = c(4e9, 1e10))
+plot(x = start_year_proj:(start_year_proj + horizon - 1), y = gross_premium_CAT_norm_mat[1:horizon, 1], type = "l", col = col_list[1], xlab = "Years", ylab = "Premiums", main = "Gross CAT premiums (normalised)", ylim = c(4e9, 9e9), cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
 for(s in 2:4){
-    points(x = start_year_proj:(start_year_proj + horizon - 1), y = gross_premium_CAT_norm_mat[1:horizon, s], type = "l", col = col_list[s])
+    points(x = start_year_proj:(start_year_proj + horizon - 1), y = gross_premium_CAT_norm_mat[1:horizon, s], type = "l", col = col_list[s], lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ```
 
@@ -5055,15 +5407,15 @@ Plot the projected proportions of CAT premiums together with historical proporti
 
 - This generates Figure 3.8 in Section 3.2.3.
 
-```{r Plot the historical proportions of CAT losses and projected proportions, fig.height = 7}
+```{r Plot the historical proportions of CAT losses and projected proportions}
 horizon <- 38
 #pdf("Plotting/Premiums/Gross_CAT_premiums_proportions_2060_withHistorical.pdf")
-plot(x = c(GI_Ultimate_Losses_PM$Year, start_year_proj:(start_year_proj + horizon - 1)), y = c(GI_Ultimate_Losses_PM$CAT_loss_annual/GI_Ultimate_Losses_PM$Ultimate_Cost, rep(NA, each = horizon)), type = "p", ylim = c(0, 0.4), pch = 16, xlab = "Years", ylab = "Proportions", main = "Projected proportion of CAT premiums")
+plot(x = c(GI_Ultimate_Losses_PM$Year, start_year_proj:(start_year_proj + horizon - 1)), y = c(GI_Ultimate_Losses_PM$CAT_loss_annual/GI_Ultimate_Losses_PM$Ultimate_Cost, rep(NA, each = horizon)), type = "p", ylim = c(0, 0.4), pch = 16, xlab = "Years", ylab = "Proportions", main = "Projected proportion of CAT premiums", cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
 for(s in 1:4){
-    points(x = c(GI_Ultimate_Losses_PM$Year, start_year_proj:(start_year_proj + horizon - 1)), y = c(rep(NA, nrow(GI_Ultimate_Losses_PM)),prop_CAT_premium_total_mat[1:horizon, s]), type = "l", col = col_list[s])
+    points(x = c(GI_Ultimate_Losses_PM$Year, start_year_proj:(start_year_proj + horizon - 1)), y = c(rep(NA, nrow(GI_Ultimate_Losses_PM)),prop_CAT_premium_total_mat[1:horizon, s]), type = "l", col = col_list[s], lwd = 4)
 }
-abline(h = mean(GI_Ultimate_Losses_PM$CAT_loss_annual/GI_Ultimate_Losses_PM$Ultimate_Cost), lty = 2)
-legend("topleft", legend = c("Historical observed proportion of CAT losses","Historical average proportion of CAT losses", "SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("black", "black","green", "orange", "red", "brown"), cex = 0.6, lty = c(NA,2,1,1,1,1), pch = c(16, rep(NA, 5)))
+abline(h = mean(GI_Ultimate_Losses_PM$CAT_loss_annual/GI_Ultimate_Losses_PM$Ultimate_Cost), lty = 2, lwd = 2)
+legend("topleft", legend = c("Historical observed proportion of CAT losses","Historical average proportion of CAT losses", "SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c("black", "black", col_list), cex = 0.78, lty = c(NA,2,1,1,1,1), pch = c(16, rep(NA, 5)), lwd = c(2, 2, rep(4, 4)))
 #dev.off()
 ```
 
@@ -5076,11 +5428,11 @@ Plot the normalised reinsurance premiums and the relative change:
 ```{r Plot of reinsurance premiums (with cyclical effects considered)}
 #pdf("Plotting/Premiums/Reinsurance_premiums_soladj_proj_2060_mean.pdf")
 horizon <- 38
-plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon], type = "l", col = col_list[1], ylim = c(5e8, 2.5e9), xlab = "Years", ylab = "Reinsurance premium", main = "Reinsurance premiums (normalised; mean)", cex.lab = 0.9)
+plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon], type = "l", col = col_list[1], ylim = c(5e8, 2.5e9), xlab = "Years", ylab = "Reinsurance premium", main = "Reinsurance premiums (normalised; mean)", cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
 for(s in 2:4){
-    points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][2, 1:horizon], type = "l", col = col_list[s], lty = 1)
+    points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][2, 1:horizon], type = "l", col = col_list[s], lty = 1, lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.8, lty = c(1,1,1,1))
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.8, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ```
 
@@ -5092,12 +5444,12 @@ legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = 
 #par(mfrow = c(3, 1))
 #pdf("Plotting/Premiums/Reinsurance_premiums_solAdj_vs_base_mean.pdf")
 ## Mean:
-plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, 1] - 1, type = "l", col = col_list[1], ylim = c(0, 1.1), main = "Relative difference to base reinsurance premiums (mean)", xlab  = "Years", ylab = "Ratios", yaxt = "n")
+plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, 1] - 1, type = "l", col = col_list[1], ylim = c(0, 1.1), main = "Relative difference to base reinsurance premiums (mean)", xlab  = "Years", ylab = "Ratios", yaxt = "n", cex.main = 1.4, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
 axis(2, at = seq(0, 1.1, by = 0.2), labels = paste0(seq(0, 1, by = 0.2) * 100, '%'), las = 1)
 for(s in 2:4){
-    points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, s] - 1, type = "l", col = col_list[s])
+    points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, s] - 1, type = "l", col = col_list[s], lwd = 4)
 }
-legend("bottomright", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.8, lty = c(1,1,1,1))
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(3, 4))
 #dev.off()
 ```
 
@@ -5156,8 +5508,8 @@ for(s in 1:4){
 ```{r Plot the quantile range of the simulated underwritting losses, fig.height = 3}
 #pdf("Plotting/Liabilities/Simulations_underwritinglosses.pdf")
 horizon <- 38
-plot_quantiles_scenario(UL_losses_market_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Underwriting losses", main = "Simulated underwriting losses (normalised)", y_range = c(-1e10, 3e10), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(UL_losses_market_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Underwriting losses", main = "Simulated underwriting losses (normalised)", y_range = c(-6e9, 2.3e10), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, mean_lwd = 4, quantiles_lwd = 3)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 abline(h = 0, lty = 6)
 #dev.off()
 ```
@@ -5173,25 +5525,25 @@ Plot the expected and median market surplus (log-scale):
 - This generates Figure 3.13 and 3.14 in Section 3.3 in the paper. 
 
 
-```{r Plot of expected and median surplus with adjusted capital (with reinsuranc cycle considered), fig.height = 7}
+```{r Plot of expected and median surplus with adjusted capital (with reinsuranc cycle considered)}
 #par(mfrow = c(2, 1))
 ## Plot of median surplus (with reinsurance): 
 #pdf("Plotting/Surplus/Median_market_surplus_re_cycle.pdf")
 horizon <- 38
-plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle[1:horizon, 1]), col = col_list[1], type = "l", xlab = "Years", ylab = "Median surplus", main = "Median market surplus (log-scale)", ylim = c(23, 32))
+plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle[1:horizon, 1]), col = col_list[1], type = "l", xlab = "Years", ylab = "Median surplus", main = "Median market surplus (log-scale)", ylim = c(25, 32), lwd = 4, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
 for(s in 2:4){
-    points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle[1:horizon, s]), col = col_list[s], type = "l")
+    points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle[1:horizon, s]), col = col_list[s], type = "l", lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 
 ## Plot of mean surplus (with reinsurance): 
 #pdf("Plotting/Surplus/Mean_market_surplus_re_cycle.pdf")
-plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[1]][2, 1:horizon]), col = col_list[1], type = "l", xlab = "Years", ylab = "Mean surplus", main = "Mean market surplus (log-scale)", ylim = c(23, 32))
+plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[1]][2, 1:horizon]), col = col_list[1], type = "l", xlab = "Years", ylab = "Mean surplus", main = "Mean market surplus (log-scale)", ylim = c(25, 32), lwd = 4, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
 for(s in 2:4){
-    points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]), col = col_list[s], type = "l")
+    points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]), col = col_list[s], type = "l", , lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ```
 
@@ -5205,14 +5557,15 @@ Plot the market surplus (log-scale) over the log-scale cumulative investment ret
 #pdf("Plotting/Surplus/Median_surplus_trends_drivers_cycle.pdf")
 horizon <- 38
 par(mfrow = c(2, 2))
+par(mar = c(2.48, 2.48, 2.48, 1), mgp = c(1.5, 0.5, 0))
 for(s in 1:4){
 ## Fit a linear regression model:
 Inv_lm <- lm(log(market_capital_adj_median_cycle[1:horizon, s]) ~ log_investment_returns_nominal_median_all_scenarios_mat[1:horizon, s])
 #Plot:
-plot(x = log_investment_returns_nominal_median_all_scenarios_mat[1:horizon, s], y = log(market_capital_adj_median_cycle[1:horizon, s]), col = col_list[s], pch = 16, xlab = "Median investment returns (log)", ylab = "Median surplus (log)", main =scenario_list[s])
+plot(x = log_investment_returns_nominal_median_all_scenarios_mat[1:horizon, s], y = log(market_capital_adj_median_cycle[1:horizon, s]), col = col_list[s], pch = 16, xlab = "Median investment returns (log)", ylab = "Median surplus (log)", main =scenario_list[s], ylim = c(25, 31))
 ## add the fitted line: 
-points(x = log_investment_returns_nominal_median_all_scenarios_mat[1:horizon, s], y = fitted(Inv_lm), type = "l", lwd = 1.5, lty = 2)
-legend("bottomright", legend = paste("R-squared:", round(summary(Inv_lm)$r.squared, 3)), lty = 2, cex = 0.8)
+points(x = log_investment_returns_nominal_median_all_scenarios_mat[1:horizon, s], y = fitted(Inv_lm), type = "l", lty = 2, lwd = 3)
+legend("bottomright", legend = paste("R-squared:", round(summary(Inv_lm)$r.squared, 3)), lty = 2, cex = 0.9, lwd = 2)
 }
 #dev.off()
 
@@ -5221,14 +5574,15 @@ legend("bottomright", legend = paste("R-squared:", round(summary(Inv_lm)$r.squar
 
 #pdf("Plotting/Surplus/Mean_surplus_trends_drivers_cycle.pdf")
 par(mfrow = c(2, 2))
+par(mar = c(2.48, 2.48, 2.48, 1), mgp = c(1.5, 0.5, 0))
 for(s in 1:4){
 ## Fit a linear regression model:
 Inv_lm <- lm(log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]) ~  log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, 1:horizon])
 #Plot:
-plot(x = log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, 1:horizon], y = log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]), col = col_list[s], pch = 16, xlab = "Mean investment returns (log)", ylab = "Expected surplus (log)", main = scenario_list[s])
+plot(x = log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, 1:horizon], y = log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]), col = col_list[s], pch = 16, xlab = "Mean investment returns (log)", ylab = "Expected surplus (log)", main = scenario_list[s], ylim = c(25, 31))
 ## add the fitted line: 
-points(x = log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, 1:horizon], y = fitted(Inv_lm), type = "l", lwd = 1.5, lty = 2)
-legend("bottomright", legend = paste("R-squared:", round(summary(Inv_lm)$r.squared, 3)), lty = 2, cex = 0.8)
+points(x = log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, 1:horizon], y = fitted(Inv_lm), type = "l", lwd = 3, lty = 2)
+legend("bottomright", legend = paste("R-squared:", round(summary(Inv_lm)$r.squared, 3)), lty = 2, cex = 0.9, lwd = 2)
 }
 #dev.off()
 ```
@@ -5241,11 +5595,11 @@ Plot the market insolvency probabilities:
 ```{r Plot of market insolvency probabilities (with reinsurnace cycle considered)}
 #pdf("Plotting/Surplus/Market_Insolvency_probs_cycle.pdf")
 horizon <- 38
-plot(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle[1:horizon, 1], col = col_list[1], type = "l", ylim = c(0, 0.3), xlab = "Years", ylab = "Insolvency probabilities", main = "Market insolvency probability")
+plot(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle[1:horizon, 1], col = col_list[1], type = "l", ylim = c(0, 0.3), xlab = "Years", ylab = "Insolvency probabilities", main = "Market insolvency probability", lwd = 4, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
 for(s in 2:4){
-    points(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle[1:horizon, s], col = col_list[s], type = "l")
+    points(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle[1:horizon, s], col = col_list[s], type = "l", lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ```
 
@@ -5293,8 +5647,9 @@ LGD_all_sims_list_cycle[[s]] <- LGD_all_list
 ```{r Plot of loss given insolvency ratios (with reinsurance cycle considered)}
 #pdf("Plotting/Surplus/Market_deficit_given_insolvency_cycle.pdf")
 horizon <- 50
-plot_quantiles_scenario(LGD_quantiles_all_scenarios_list_ratios_adj_cycle, forecast_periods = start_year:(start_year + horizon - 1), var_name = "Deficit given insolvency", main = "Market deficit given insolvency (ratios)", y_range = c(0, 1), colour_list = c("green", "orange", "red", "brown"), horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.5", "SSP 8.5"), col = c("green", "orange", "red", "brown"), cex = 0.6, lty = c(1,1,1,1))
+plot_quantiles_scenario(LGD_quantiles_all_scenarios_list_ratios_adj_cycle, forecast_periods = start_year:(start_year + horizon - 1), var_name = "Deficit given insolvency", main = "Market deficit given insolvency (ratios)", y_range = c(0, 1), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F, cex.main.choice = 1.5, cex.lab.choice = 1.5, cex.axis.choice = 1.5, xlab.name = "Years", mean_lwd = 4, quantiles_lwd = 3)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.9, lty = c(1,1,1,1), lwd = rep(4, 4))
+
 #dev.off()
 ```
 
@@ -5336,7 +5691,8 @@ barplot(
   yaxt = "n",
   ylim = c(0, 0.2), 
   legend.text = TRUE,                          # show a legend
-  args.legend = list(x = "topright", bty = "n", cex = 0.8) # legend position and style
+  args.legend = list(x = "topright", bty = "n", cex = 0.8), 
+  cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 2
 )
 axis(2,
      at = y_breaks,
@@ -5344,4 +5700,839 @@ axis(2,
      las = 1)  
 #dev.off()
 ```
+
+# Sensitivity analysis
+
+## Dividend payout ratios
+
+```{r Import the APRA statistics for calcualting solvency ratios}
+APRA_market_stats_1 <- read_excel(GI_fins_stats_input, sheet = "Data - Level 1")
+```
+
+```{r Calculate solvency ratios for primary insurers based on APRA statistics}
+## Extract the written premiums:
+APRA_market_gross_premiums <- APRA_market_stats_1 %>% filter(`Data item` == "Gross written premium") %>% filter(`Industry sector` == "Direct insurer") %>% select(`Reporting date`, `Company short name`, Value) %>% drop_na() %>% rename(Gross_written_premium = Value) %>% filter(Gross_written_premium > 0) ## Exclude the insolvency case
+## Extract the capital base
+APRA_market_capital <- APRA_market_stats_1 %>% filter(`Data item` == "Capital base") %>% filter(`Industry sector` == "Direct insurer") %>% select(`Reporting date`, `Company short name`,  Value) %>% drop_na() %>% rename(Capital_base = Value) %>% filter(Capital_base > 0) ## Exclude the insolvency case
+## Extract the Minimum Capital requirements: 
+APRA_market_MCR <- APRA_market_stats_1 %>% filter(`Data item` == "Minimum capital requirement") %>% filter(`Industry sector` == "Direct insurer") %>% select(`Reporting date`, `Company short name`,  Value) %>% drop_na() %>% rename(MCR = Value) %>% filter(MCR > 0) ## Exclude the insolvency case
+## Join the data: 
+APRA_market_solvency <- left_join(APRA_market_gross_premiums, APRA_market_capital, by = c("Reporting date", "Company short name")) %>% left_join(APRA_market_MCR, by = c("Reporting date", "Company short name")) %>% mutate(Solvecny_ratio_capitalBase = Capital_base/Gross_written_premium, Solvency_ratio_MCR = MCR/Gross_written_premium, Solvency_multiplier = Capital_base/MCR)
+```
+
+
+```{r Derive the long-term steady-state values}
+### Derive the solvency statistics: 
+APRA_market_solvency_stats <- APRA_market_solvency %>% group_by(`Reporting date`) %>% summarise(Solvecny_ratio_capitalBase_mean = mean(Solvecny_ratio_capitalBase, na.rm = T), Solvency_ratio_MCR_mean = mean(Solvency_ratio_MCR, na.rm = T),Solvecny_ratio_capitalBase_median = median(Solvecny_ratio_capitalBase, na.rm = T), Solvency_ratio_MCR_median = median(Solvency_ratio_MCR, na.rm = T)) %>% mutate(Year = year(`Reporting date`), Month = month(`Reporting date`)) %>% filter(Month == 6) 
+### Remove outliers:
+APRA_market_solvency_stats_outlier_removed <- APRA_market_solvency_stats %>% filter(Solvecny_ratio_capitalBase_mean < 10)
+### Calculate the long-term steady-state ratios: 
+solvency_ratios_mean <- mean(APRA_market_solvency_stats_outlier_removed$Solvecny_ratio_capitalBase_mean, na.rm = T)
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/Ratios_of_capital_base_to_written_Premiums.pdf")
+plot(x = APRA_market_solvency_stats_outlier_removed$Year, y = APRA_market_solvency_stats_outlier_removed$Solvecny_ratio_capitalBase_mean, type = "p", pch = 16, xlab = "Years", ylab = "Ratios", main = "Ratios of capital base to gross written premiums (APRA statistics)", cex.main = 0.9)
+abline(h = solvency_ratios_mean,  lwd = 2, lty = 2, col = "red")
+legend("topleft", lty = 2, col = "red", legend = c("Mean"), lwd = 2)
+#dev.off()
+```
+
+```{r}
+paste("Selected long-run mean of capital-to-premium ratios:", round(solvency_ratios_mean, 0))
+```
+
+
+
+```{r Write a sensitivity testing function for dividend payout ratios}
+Div_sensitivity_test_func <- function(payout_ratio, solvency_steady_state, Div_limit_param){             #######################################################
+    # Calculate firm-level surplus:
+    #######################################################
+    ## Define empty list to store the outputs:
+    capitalPremiums_sims_list_L_cycle <- list()
+    capitalPremiums_sims_list_M_cycle <- list()
+    capitalPremiums_sims_list_S_cycle <- list()
+    
+    ## Calculate the simulated capital: 
+    for(s in 1:4){
+        ## Initial capital requirement for large size: 
+        UL_sims_Large_cycle <- calc_surplus_func_full_cycle(Risk_free_weight = Risk_free_weight_default, 
+                                      Brown_weight = Brown_weight, 
+                                      market_cap = market_share_input[market_share_input$Company == "Large", ]$Market_shares,
+                                      reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Excess,
+                                      reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Excess, 
+                                      S_init = init_capital_L[s], 
+                                      S_init_norm = init_capital_L_norm[s],
+                                      scenario_index = s, 
+                                      Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")),
+                                      dispersion_nonCAT = dispersion_nonCAT,
+                                      Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")), 
+                                      dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion),
+                                      Exposure_pred_other_full = Exposure_forecasts_other, 
+                                      Power_Non_CAT_loss = power_tw, 
+                                      Expected_CAT_Loss = Hazard_loss_pred_dat[, -1],
+                                      Var_CAT_loss = Hazard_var_agg_mat, 
+                                      risk_aversion = risk_aversion_default, 
+                                      CPI_pred_mat = CPI_expected_mat, CPI_start = CPI_start, 
+                                      GDP_pred_mat = Real_GDP_forecasts, GDP_start = Real_GDP_start, 
+                                      Exposure_pred_mat = Exposure_forecasts,
+                                      Exposure_start = Exposure_start,
+                                      simulation_DFA_list_all = DFA_components_all_scenarios, 
+                                      equities_output = equity_TR_excess_adj_OP_list, 
+                                      equities_output_brown = equity_TR_excess_adj_OP_brown_list,
+                                      n.sims = n.sims, 
+                                      horizon = forecast_horizon,
+                                      k1_param = k1_default,
+                                      S0_param = S_ref_default,
+                                      k3_param = 0,
+                                      assumption_alternative = FALSE,
+                                      Div_payout = payout_ratio, solvency_ratio_steady = solvency_steady_state, Div_limit = Div_limit_param)
+        
+        ## Initial capital requirement for medium size: 
+        UL_sims_Medium_cycle <- calc_surplus_func_full_cycle(Risk_free_weight = Risk_free_weight_default, 
+                                      Brown_weight = Brown_weight, 
+                                      market_cap = market_share_input[market_share_input$Company == "Medium", ]$Market_shares,
+                                      reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Excess,
+                                      reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Excess, 
+                                      S_init = init_capital_M[s], 
+                                      S_init_norm = init_capital_M_norm[s],
+                                      scenario_index = s, 
+                                      Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")),
+                                      dispersion_nonCAT = dispersion_nonCAT,
+                                      Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")), 
+                                      dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion),
+                                      Exposure_pred_other_full = Exposure_forecasts_other, 
+                                      Power_Non_CAT_loss = power_tw, 
+                                      Expected_CAT_Loss = Hazard_loss_pred_dat[, -1],
+                                      Var_CAT_loss = Hazard_var_agg_mat, 
+                                      risk_aversion = risk_aversion_default, 
+                                      CPI_pred_mat = CPI_expected_mat, CPI_start = CPI_start, 
+                                      GDP_pred_mat = Real_GDP_forecasts, GDP_start = Real_GDP_start, 
+                                      Exposure_pred_mat = Exposure_forecasts,
+                                      Exposure_start = Exposure_start,
+                                      simulation_DFA_list_all = DFA_components_all_scenarios, 
+                                      equities_output = equity_TR_excess_adj_OP_list, 
+                                      equities_output_brown = equity_TR_excess_adj_OP_brown_list,
+                                      n.sims = n.sims, 
+                                      horizon = forecast_horizon,
+                                      k1_param = k1_default,
+                                      S0_param = S_ref_default,
+                                      k3_param = 0,
+                                      assumption_alternative = FALSE,
+                                      Div_payout = payout_ratio, solvency_ratio_steady = solvency_steady_state, Div_limit = Div_limit_param)
+        
+        ## Initial capital requirement for small size: 
+        UL_sims_Small_cycle <- calc_surplus_func_full_cycle(Risk_free_weight = Risk_free_weight_default, 
+                                      Brown_weight = Brown_weight, 
+                                      market_cap = market_share_input[market_share_input$Company == "Small", ]$Market_shares,
+                                      reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Excess,
+                                      reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Excess, 
+                                      S_init = init_capital_S[s], 
+                                      S_init_norm = init_capital_S_norm[s],
+                                      scenario_index = s, 
+                                      Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")),
+                                      dispersion_nonCAT = dispersion_nonCAT,
+                                      Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")), 
+                                      dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion),
+                                      Exposure_pred_other_full = Exposure_forecasts_other, 
+                                      Power_Non_CAT_loss = power_tw, 
+                                      Expected_CAT_Loss = Hazard_loss_pred_dat[, -1],
+                                      Var_CAT_loss = Hazard_var_agg_mat, 
+                                      risk_aversion = risk_aversion_default, 
+                                      CPI_pred_mat = CPI_expected_mat, CPI_start = CPI_start, 
+                                      GDP_pred_mat = Real_GDP_forecasts, GDP_start = Real_GDP_start, 
+                                      Exposure_pred_mat = Exposure_forecasts,
+                                      Exposure_start = Exposure_start,
+                                      simulation_DFA_list_all = DFA_components_all_scenarios, 
+                                      equities_output = equity_TR_excess_adj_OP_list, 
+                                      equities_output_brown = equity_TR_excess_adj_OP_brown_list,
+                                      n.sims = n.sims, 
+                                      horizon = forecast_horizon,
+                                      k1_param = k1_default,
+                                      S0_param = S_ref_default,
+                                      k3_param = 0,
+                                      assumption_alternative = FALSE,
+                                      Div_payout = payout_ratio, solvency_ratio_steady = solvency_steady_state, Div_limit = Div_limit_param)
+        
+    ## store the simulated outputs:
+    capitalPremiums_sims_list_L_cycle[[s]] <- UL_sims_Large_cycle
+    capitalPremiums_sims_list_M_cycle[[s]] <- UL_sims_Medium_cycle
+    capitalPremiums_sims_list_S_cycle[[s]] <- UL_sims_Small_cycle
+    }
+    #######################################################
+    # Calculate market-level surplus: 
+    #######################################################
+    ## Create empty lists: 
+    capital_sims_list_Market_cycle <- list()
+    for(s in 1:4){
+        ## Calculate the market surplus:
+        capital_sims_list_Market_cycle[[s]] <- capitalPremiums_sims_list_L_cycle[[s]]$Capital_sims*market_share_input[market_share_input$Company == "Large", ]$Numbers + capitalPremiums_sims_list_M_cycle[[s]]$Capital_sims*market_share_input[market_share_input$Company == "Medium", ]$Numbers + capitalPremiums_sims_list_S_cycle[[s]]$Capital_sims*market_share_input[market_share_input$Company == "Small", ]$Numbers
+    } 
+    capital_sims_list_Market_adj_all_scenarios_cycle <- list()
+for(s in 1:4){
+    capital_sims_list_Market_adj_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    for(i in 1:n.sims){
+        capital_sim <- capital_sims_list_Market_cycle[[s]][, i]
+        ## Find the index of the first time that the surplus turns to negative: 
+        first_negative_idx <- which(capital_sim <= 0)[1] 
+        ## Set all numbers after the first negative number to zero
+        if (!is.na(first_negative_idx) && first_negative_idx < length(capital_sim)) {
+          capital_sim[(first_negative_idx + 1):length(capital_sim)] <- 0
+        }
+    capital_sims_list_Market_adj_mat[, i] <- capital_sim
+    }
+capital_sims_list_Market_adj_all_scenarios_cycle[[s]] <- capital_sims_list_Market_adj_mat
+}
+    #######################################################
+    ### Calculate statistics: 
+    #######################################################
+    market_capital_adj_quantiles_list_cycle <- list()
+market_capital_adj_default_cycle <- matrix(NA, nrow = forecast_horizon, ncol = 4)
+for(s in 1:4){
+    ## Derive quantiles for market capital: 
+    market_capital_adj_quantiles_list_cycle[[s]] <-  apply(capital_sims_list_Market_adj_all_scenarios_cycle[[s]], MARGIN = 1, FUN = function(x) multi_func_withMed2(x, quantile_low = 0.005, quantile_high = 0.995))
+    ## Calculate insolvency probabilities
+    market_capital_adj_default_cycle[, s] <- apply(capital_sims_list_Market_adj_all_scenarios_cycle[[s]], MARGIN = 1, FUN = function(x) mean(x <= 0))
+}
+return(list(Market_capital_stats = market_capital_adj_quantiles_list_cycle, 
+            Market_insolvency_rates = market_capital_adj_default_cycle))
+}
+```
+
+```{r Perform the dividend payout ratios sensitivity test, warning=FALSE}
+Div_payout_ratios_list <- c(0.1, 0.3, 0.5, 0.7, 0.9)
+capital_stats_Div_payout_sensitivity_list <- list()
+for(i in 1:length(Div_payout_ratios_list)){
+    capital_stats_Div_payout_sensitivity_list[[i]] <- Div_sensitivity_test_func(Div_payout_ratios_list[i], solvency_steady_state = 3, Div_limit = 0.5)
+}
+```
+
+```{r Perform the steady-state capital level sensitivity test under higher solvency steady state, warning=FALSE}
+capital_stats_Div_payout_sensitivity_Divlimit1_list <- list()
+for(i in 1:length(Div_payout_ratios_list)){
+   capital_stats_Div_payout_sensitivity_Divlimit1_list[[i]] <- Div_sensitivity_test_func(Div_payout_ratios_list[i], solvency_steady_state = 3, Div_limit = 1)
+}
+```
+
+
+
+```{r Define a list of line types used in the plotting}
+lty_list <- c(5, 2, 6, 4)
+```
+
+
+
+```{r Plot the comparison of mean surplus under different dividend payout ratios}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/Mean_surplus_byPayoutRatios_Scenarios.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(s in 1:4){
+plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]), type = "l", lwd = 2, col = col_list[s], xlab = "Years", ylab = "Mean surplus", main = paste("Mean market surplus (log):", scenario_list[s]), cex.main = 0.9)
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+    points(x = start_year:(start_year + horizon - 1), y = log(capital_stats_Div_payout_sensitivity_list[[j]]$Market_capital_stats[[s]][4, 1:horizon]), type = "l", lwd = 2, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = paste("Payout ratios:", c(0,Div_payout_ratios_list[1:4])), lty = c(1, lty_list), lwd = 2, col = col_list[s], cex = 0.7)
+}
+#dev.off()
+```
+
+```{r Plot the comparison of ranking of mean surplus across different payout ratios}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/Mean_surplus_byScenarios_payoutRatios.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+plot(x = start_year:(start_year + horizon - 1), y = log(capital_stats_Div_payout_sensitivity_list[[j]]$Market_capital_stats[[1]][4, 1:horizon]), type = "l", lwd = 3, col = col_list[1], xlab = "Years", ylab = "Mean surplus", main = paste("Mean market surplus (log) with payout ratio:", Div_payout_ratios_list[j]), cex.main = 0.9, lty = lty_list[j], ylim = c(25, 30))
+for(s in 2:4){
+    points(x = start_year:(start_year + horizon - 1), y = log(capital_stats_Div_payout_sensitivity_list[[j]]$Market_capital_stats[[s]][4, 1:horizon]), type = "l", lwd = 3, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, lwd = rep(2, 2), cex = 0.7, lty = lty_list[j])
+}
+#dev.off()
+```
+
+
+```{r Derive the average difference in mean surplus}
+mean_diff_surplus_DivPayouts_list <- c()
+mean_diff_surplus_DivPayouts_list[1] <- mean((market_capital_adj_quantiles_list_cycle[[1]][2, 1:horizon] - market_capital_adj_quantiles_list_cycle[[4]][2, 1:horizon])/market_capital_adj_quantiles_list_cycle[[1]][2, 1:horizon])
+for(j in 1:4){
+    mean_diff_surplus_DivPayouts_list[j + 1] <- mean((capital_stats_Div_payout_sensitivity_list[[j]]$Market_capital_stats[[1]][4, 1:horizon] - capital_stats_Div_payout_sensitivity_list[[j]]$Market_capital_stats[[4]][4, 1:horizon])/capital_stats_Div_payout_sensitivity_list[[j]]$Market_capital_stats[[1]][4, 1:horizon])
+}
+
+data.frame(Dividend_payout = c(0, Div_payout_ratios_list[1:4]), Mean_diff_surplus = mean_diff_surplus_DivPayouts_list)
+```
+
+
+```{r Plot the comparison of insolvency probabilities under different dividend payout ratios}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/InsolvencyProbs_byPayoutRatios_Scenarios.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(s in 1:4){
+plot(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle[1:horizon, s], type = "l", lwd = 2, col = col_list[s], xlab = "Years", ylab = "Insolvency", main = paste("Insolvency probability:", scenario_list[s]), cex.main = 0.9, ylim = c(0, 0.4))
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+    points(x = start_year:(start_year + horizon - 1), y = capital_stats_Div_payout_sensitivity_list[[j]]$Market_insolvency_rates[1:horizon,s], type = "l", lwd = 2, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = paste("Payout ratios:", c(0,Div_payout_ratios_list[1:4])), lty = c(1, lty_list), lwd = 2, col = col_list[s], cex = 0.7)
+}
+#dev.off()
+```
+
+
+```{r Plot the comparison of ranking of insolvency probabilities across different payout ratios}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/InsolvencyProbs_byScenarios_payoutRatios.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+plot(x = start_year:(start_year + horizon - 1), y = capital_stats_Div_payout_sensitivity_list[[j]]$Market_insolvency_rates[1:horizon,1], type = "l", lwd = 3, col = col_list[1], xlab = "Years", ylab = "Mean surplus", main = paste("Insolvency probability with payout ratio:", Div_payout_ratios_list[j]), cex.main = 0.9, lty = lty_list[j], ylim = c(0, max(capital_stats_Div_payout_sensitivity_list[[j]]$Market_insolvency_rates[1:horizon, ])))
+for(s in 2:4){
+    points(x = start_year:(start_year + horizon - 1), y = capital_stats_Div_payout_sensitivity_list[[j]]$Market_insolvency_rates[1:horizon,s], type = "l", lwd = 3, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, lwd = rep(2, 2), cex = 0.7, lty = lty_list[j])
+}
+#dev.off()
+```
+
+```{r Derive the average difference in insolvency probability}
+mean_diff_insolvency_probs_DivPayouts_list <- c()
+mean_diff_insolvency_probs_DivPayouts_list[1] <- mean(market_capital_adj_default_cycle[1:horizon, 1] - market_capital_adj_default_cycle[1:horizon, 4])
+for(j in 1:4){
+    mean_diff_insolvency_probs_DivPayouts_list[j + 1] <- mean(capital_stats_Div_payout_sensitivity_list[[j]]$Market_insolvency_rates[1:horizon,1] - capital_stats_Div_payout_sensitivity_list[[j]]$Market_insolvency_rates[1:horizon,4])
+}
+## Plot the results:
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/Mean_diff_insolvency_prob_SSP26vs85.pdf")
+barplot(mean_diff_insolvency_probs_DivPayouts_list, ylim = c(0, 0.035), names.arg = c(0, Div_payout_ratios_list[1:4]), xlab = "Dividend payout ratios", ylab = "Difference", main = "Mean difference between insolvency probability (SSP 2.6 v.s SSP 8.5)", cex.main = 1)
+#dev.off()
+
+data.frame(Dividend_payout = c(0, Div_payout_ratios_list[1:4]), Mean_diff_insolvency = mean_diff_insolvency_probs_DivPayouts_list)
+```
+
+Derive the results with higher cap on dividends payout ($100\%$): 
+
+```{r Plot the comparison of ranking of mean surplus across different payout ratios with lower cap}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/Mean_surplus_byPayoutRatios_Scenarios_HigherCap.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(s in 1:4){
+plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]), type = "l", lwd = 2, col = col_list[s], xlab = "Years", ylab = "Mean surplus", main = paste("Mean market surplus (log):", scenario_list[s]), cex.main = 0.9)
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+    points(x = start_year:(start_year + horizon - 1), y = log(capital_stats_Div_payout_sensitivity_Divlimit1_list[[j]]$Market_capital_stats[[s]][4, 1:horizon]), type = "l", lwd = 2, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = paste("Payout ratios (with 100% cap):", c(0,Div_payout_ratios_list[1:4])), lty = c(1, lty_list), lwd = 2, col = col_list[s], cex = 0.7)
+}
+#dev.off()
+```
+
+
+```{r Plot the comparison of ranking of mean surplus across different payout ratios}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/Mean_surplus_byScenarios_payoutRatios_HigherCap.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+plot(x = start_year:(start_year + horizon - 1), y = log(capital_stats_Div_payout_sensitivity_Divlimit1_list[[j]]$Market_capital_stats[[1]][4, 1:horizon]), type = "l", lwd = 3, col = col_list[1], xlab = "Years", ylab = "Mean surplus", main = paste("Mean market surplus (log) with payout ratio (100% cap):", Div_payout_ratios_list[j]), cex.main = 0.85, lty = lty_list[j], ylim = c(25, 30))
+for(s in 2:4){
+    points(x = start_year:(start_year + horizon - 1), y = log(capital_stats_Div_payout_sensitivity_Divlimit1_list[[j]]$Market_capital_stats[[s]][4, 1:horizon]), type = "l", lwd = 3, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, lwd = rep(2, 2), cex = 0.7, lty = lty_list[j])
+}
+#dev.off()
+```
+
+
+
+```{r Plot the comparison of insolvency probabilities under different dividend payout ratios}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/InsolvencyProbs_byPayoutRatios_Scenarios_HigherCap.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(s in 1:4){
+plot(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle[1:horizon, s], type = "l", lwd = 2, col = col_list[s], xlab = "Years", ylab = "Insolvency", main = paste("Insolvency probability:", scenario_list[s]), cex.main = 0.9, ylim = c(0, 0.4))
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+    points(x = start_year:(start_year + horizon - 1), y = capital_stats_Div_payout_sensitivity_Divlimit1_list[[j]]$Market_insolvency_rates[1:horizon,s], type = "l", lwd = 2, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = paste("Payout ratios (with 100% cap):", c(0,Div_payout_ratios_list[1:4])), lty = c(1, lty_list), lwd = 2, col = col_list[s], cex = 0.7)
+}
+#dev.off()
+```
+
+```{r Plot the comparison of ranking of insolvency probabilities across different payout ratios}
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Surplus/InsolvencyProbs_byScenarios_payoutRatios_HigherCap.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(j in 1:(length(Div_payout_ratios_list) - 1)){
+plot(x = start_year:(start_year + horizon - 1), y = capital_stats_Div_payout_sensitivity_Divlimit1_list[[j]]$Market_insolvency_rates[1:horizon,1], type = "l", lwd = 3, col = col_list[1], xlab = "Years", ylab = "Mean surplus", main = paste("Insolvency probability with payout ratio (100% cap):", Div_payout_ratios_list[j]), cex.main = 0.85, lty = lty_list[j], ylim = c(0, max(capital_stats_Div_payout_sensitivity_Divlimit1_list[[j]]$Market_insolvency_rates[1:horizon, ])))
+for(s in 2:4){
+    points(x = start_year:(start_year + horizon - 1), y = capital_stats_Div_payout_sensitivity_Divlimit1_list[[j]]$Market_insolvency_rates[1:horizon,s], type = "l", lwd = 3, col = col_list[s], lty = lty_list[j])
+}
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, lwd = rep(2, 2), cex = 0.7, lty = lty_list[j])
+}
+#dev.off()
+```
+
+
+## Economic damage sensitivity test
+
+### Calibrate the adjustment parameters
+
+```{r Define the DICE damage function}
+calc_damage_ratios_DICE <- function(GMST, gamma = 0.003467, exponent = 2){
+    damage_ratio <- gamma * GMST^exponent
+    return(damage_ratio)
+}
+
+calc_damage_ratios_DICE2016 <- function(GMST, gamma = 0.00227, exponent = 2){
+    damage_ratio <- gamma * GMST^exponent
+    return(damage_ratio)
+} # Source from: https://www.nber.org/system/files/working_papers/w22933/w22933.pdf
+
+calc_damage_ratios_DICE1992 <- function(GMST, gamma = 0.0133, exponent = 2, divisor = 3){
+    damage_ratio <- gamma * (GMST/divisor)^exponent
+    return(damage_ratio)
+} # Source from: https://stephenschneider.stanford.edu/Publications/PDF_Papers/OptimalScience1192.pdf
+```
+
+```{r Import the GMST increase data}
+SSP_temp_dat <- read.csv("Supplementary data/Temperature increase/global-average-temperature-increase-relative-to-the-pre-industrial-era.csv") %>% pivot_wider(names_from = Scenario, values_from = Temperature)
+colnames(SSP_temp_dat) = c("Year","SSP 1.00", "SSP 2.00", "SSP 3.00", "SSP 5.00")
+#### Interpolation: 
+interpolated_years_temp <- min(SSP_temp_dat$Year):max(SSP_temp_dat$Year)
+SSP_temp_dat_interpolate_dat <- data.frame(Year = interpolated_years_temp,
+                                              `SSP 1.00` = spline(SSP_temp_dat$Year, SSP_temp_dat$`SSP 1.00`, n = length(interpolated_years_temp))$y,
+                                              `SSP 2.00` = spline(SSP_temp_dat$Year, SSP_temp_dat$`SSP 2.00`, n = length(interpolated_years_temp))$y,
+                                              `SSP 3.00` = spline(SSP_temp_dat$Year, SSP_temp_dat$`SSP 3.00`, n = length(interpolated_years_temp))$y,
+                                              `SSP 5.00` = spline(SSP_temp_dat$Year, SSP_temp_dat$`SSP 5.00`, n = length(interpolated_years_temp))$y) %>% filter(Year >= 2023)
+colnames(SSP_temp_dat_interpolate_dat) = c("Year", scenario_list)
+```
+
+```{r Derive the DICE damage ratios}
+damage_ratios_DICE_mat <- matrix(NA, nrow = nrow(SSP_temp_dat_interpolate_dat), ncol = 4)
+for(s in 1:4){
+    damage_ratios_DICE_mat[, s] <- calc_damage_ratios_DICE(GMST = SSP_temp_dat_interpolate_dat[, s + 1])
+}
+damage_ratios_DICE2016_mat <- matrix(NA, nrow = nrow(SSP_temp_dat_interpolate_dat), ncol = 4)
+for(s in 1:4){
+    damage_ratios_DICE2016_mat[, s] <- calc_damage_ratios_DICE2016(GMST = SSP_temp_dat_interpolate_dat[, s + 1])
+}
+damage_ratios_DICE1992_mat <- matrix(NA, nrow = nrow(SSP_temp_dat_interpolate_dat), ncol = 4)
+for(s in 1:4){
+    damage_ratios_DICE1992_mat[, s] <- calc_damage_ratios_DICE1992(GMST = SSP_temp_dat_interpolate_dat[, s + 1])
+}
+
+
+### Plot the implied DICE damage ratios: 
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Asset/Implied_SSP_damage_ratios.pdf")
+plot(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = damage_ratios_DICE_mat[1:horizon, 1], col = col_list[1], type = "l", ylim = c(0, 0.04), xlab = "Years", ylab = "Damage ratios", main = "Implied SSP damage ratios from DICE coefficients", lwd = 3, yaxt = "n")
+points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = damage_ratios_DICE2016_mat[1:horizon, 1], col = col_list[1], type = "l", lwd = 3, lty = 5)
+points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = damage_ratios_DICE1992_mat[1:horizon, 1], col = col_list[1], type = "l", lwd = 6, lty = 3)
+axis(2, at = pretty(c(0, 0.04)), labels = paste0(pretty(c(0, 0.04)) * 100, "%"))
+for(s in 2:4){
+    points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = damage_ratios_DICE_mat[1:horizon, s], col = col_list[s], type = "l", lwd = 3)
+    points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = damage_ratios_DICE2016_mat[1:horizon, s], col = col_list[s], type = "l", lwd = 3, lty = 5)
+    points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = damage_ratios_DICE1992_mat[1:horizon, s], col = col_list[s], type = "l", lwd = 6, lty = 3)
+}
+legend("topleft", legend =c(paste(scenario_list, "(DICE 2023)"), paste(scenario_list, "(DICE 2016R2)"), paste(scenario_list, "(DICE 1992)")), col = col_list, cex = 0.7, lty = c(rep(1, 4), rep(2, 4), rep(3, 4)), lwd = 1.5)
+
+#dev.off()
+
+## Plot the GDP pathway adjusted for the climate damage:
+#pdf("/Users/jimli/Documents/DFA codes/Plotting/Asset/DICE_adjusted_GDP.pdf")
+plot(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = Real_GDP_forecasts_all[1:horizon, 4], type = "l", lty = 1, col = col_list[4], lwd = 3, xlab = "Years", ylab = "Real GDP", main = "Real GDP (Australia): Raw vs. Climate-damage-adjusted (DICE coefficients)", cex.main = 0.9, ylim = range(Real_GDP_forecasts_all[1:horizon, ]))
+
+points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y =Real_GDP_forecasts_all[1:horizon, 4]*(1 - damage_ratios_DICE_mat[1:horizon, 4]), type = "l", lty = 4, col = col_list[4], lwd = 3)
+
+
+#points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y =Real_GDP_forecasts_all[1:horizon, 4]*(1 - damage_ratios_DICE2016_mat[1:horizon, 4]), type = "l", lty = 6, col = col_list[4], lwd = 3)
+
+#points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y =Real_GDP_forecasts_all[1:horizon, 4]*(1 - Total_damage_ratio_quantiles_list[[4]][2, 1:horizon]), type = "l", lty = 3, col = col_list[4], lwd = 2)
+for(s in 1:3){
+    points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y = Real_GDP_forecasts_all[1:horizon, s], type = "l", lty = 1, col = col_list[s], lwd = 3)
+    points(x = SSP_temp_dat_interpolate_dat$Year[1:horizon], y =Real_GDP_forecasts_all[1:horizon, s]*(1 - damage_ratios_DICE_mat[1:horizon, s]), type = "l", lty = 4, col = col_list[s], lwd = 3)
+}
+legend("topleft", legend =c(paste(scenario_list, "(Raw)"), paste(scenario_list, "(Damage-adjusted; DICE 2023)")), col = col_list, cex = 0.6, lty = c(rep(1, 4), rep(2, 4)), lwd = 2)
+#dev.off()
+```
+
+
+
+
+```{r Calibrate using the linear regression approach}
+DICE_damage_scalar_alpha_list <- c()
+DICE_damage_scalar_beta_list <- c()
+for(s in 1:4){
+    fit_lm <- lm(sort(damage_ratios_DICE_mat[1:horizon, s]) ~ sort(Insure_damage_ratio_quantiles_list[[s]][2, 1:horizon]))
+    DICE_damage_scalar_alpha_list[s] <- fit_lm$coefficients[1]
+    DICE_damage_scalar_beta_list[s] <- fit_lm$coefficients[2]
+}
+```
+
+
+```{r Derive the adjusted total damage ratios}
+Total_damage_ratio_DICEAdj_quantiles_list <- list()
+for(s in 1:4){
+    Total_damage_ratio_DICEAdj_quantiles_list[[s]] <- DICE_damage_scalar_alpha_list[s] + Insure_damage_ratio_quantiles_list[[s]] *  DICE_damage_scalar_beta_list[s]
+}
+```
+
+
+
+```{r Plot the bias correction results for the total damage ratios}
+## Plot the original total economic damage ratios: 
+plot_quantiles_scenario_2(Insure_damage_ratio_quantiles_list, forecast_periods = start_year:(start_year+horizon - 1), var_name = "Damage ratios", main = "Ratios of insurance loss to GDP", y_range = c(0, 0.015), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = T, step_plot_perc = 0.005, quantile_lines = F, lwd_mean = 4)
+## Bias correction: 
+#pdf("Plotting/Asset/Mean_damage_ratios_2060_DICE_QuantileMapping.pdf")
+par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
+par(mfrow = c(2, 2))
+for(s in 1:4){
+range_ratios_plot <- c(0, max(Total_damage_ratio_DICEAdj_quantiles_list[[s]][2, 1:horizon]))
+plot(x = sort(damage_ratios_DICE_mat[1:horizon, s]), y = sort(Total_damage_ratio_DICEAdj_quantiles_list[[s]][2, 1:horizon]), col = col_list[s], ylim = range_ratios_plot, yaxt = "n", xlab = "Sorted DICE-implied damage ratios", ylab = "Sorted adjusted damage ratios", main = scenario_list[s], cex.main = 0.9, pch = 16, cex.lab = 0.9)
+#points(x = sort(damage_ratios_DICE_mat[1:horizon, s]), y = sort(Insure_damage_ratio_quantiles_list[[s]][2, 1:horizon]), col = col_list[s], pch = 16)
+abline(coef = c(0,1), lwd = 2, lty = 2)
+axis(2, at = pretty(range_ratios_plot), labels = paste0(pretty(range_ratios_plot) * 100, "%"))
+}
+#dev.off()
+```
+
+### Perform the simulations based on the adjusted economic growth
+
+```{r Simulated the equity return based on the corporate earnings channels based on the adjusted economic growth}
+equity_TR_excess_adj_OP_DICE_Adj_list <- list()
+equity_TR_excess_adj_OP_brown_DICE_Adj_list <- list()
+equity_TR_excess_adj_OP_base_DICE_Adj_list <- list()
+equity_TR_cum_excess_adj_OP_DICE_Adj_list <- list()
+equity_TR_cum_excess_adj_OP_brown_DICE_Adj_list <- list()
+DICE_adj_economic_damage_list <- list()
+#DICE_adj_economic_growth_list <- list()
+
+for(s in 1:4){
+## Define the real GDP forecast and change in brown production:
+Real_GDP_pred_raw <- Real_GDP_forecasts_all[, s]
+Brown_production_change <- Brown_production_growth_SSP[, s + 1]
+Real_GDP_pred_base_growth <- na.omit(Real_GDP_pred_raw/lag(Real_GDP_pred_raw)-1)[-1]
+## Define empty matrices to store the outputs: 
+TR_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+TR_sims_mat_Brown <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+TR_sims_mat_base <-  matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+TR_sims_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+TR_sims_brown_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+DICE_adj_economic_damage_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+DICE_adj_economic_growth_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+Random_shocks_OP_mat <- Random_shocks_OP_list[[s]]
+Random_shocks_TR_op_mat <- Random_shocks_TR_op_list[[s]]
+for(i in 1:n.sims){
+    ## Get the damage ratios:
+    damage_ratio <- pmin(DFA_components_all_scenarios[[s]]$Liabilities_module$CAT_damage_ratio[, i], 0.999)
+    economic_damage_ratio <- DICE_damage_scalar_alpha_list[s] + damage_ratio *  DICE_damage_scalar_beta_list[s]
+    #economic_damage_ratio_adj <- damage_ratio * Total_damage_scalar_mean
+    #economic_damage_ratio_adj <- economic_damage_ratio
+    economic_damage_ratio_adj <- pmax(economic_damage_ratio, 0)
+    ## Constraint the damage ratio to be less than 100% of GDP
+    ## Derive the adjusted GDP:
+    Real_GDP_pred_adj <- c(Real_GDP_pred_raw[1:2], Real_GDP_pred_raw[3:(3+forecast_horizon-1)]*(1-economic_damage_ratio_adj))
+    Real_GDP_pred_adj_growth <- na.omit(Real_GDP_pred_adj/lag(Real_GDP_pred_adj)-1)[-1]
+    ## Derive the total equity returns:
+    ### Simulate the random shocks:
+    epsilon_op <- Random_shocks_OP_mat[1:forecast_horizon, i]
+    epsilon_TR <- Random_shocks_TR_op_mat[1:forecast_horizon, i]
+    
+    ### Simulate the operating profit growth:
+    #### Derive the change in operating profit for the general sector:
+    #OP <-  Real_GDP_pred_adj_growth + epsilon_op
+    OP <- lm_OP_consumption_growth$coefficients[1] + lm_OP_consumption_growth$coefficients[2]*Real_GDP_pred_adj_growth + epsilon_op
+    #### Derive the change in operating profit for the brown sector:
+    OP_brown <- OP + Brown_production_change*scalar_impact_WDS_EBIT
+    ### Simulate the total excess returns:
+    #### General sector:
+    #TR <- pmax(OP + epsilon_TR,-1)
+    TR <- pmax(intercept_OP_TR + beta_OP_TR * OP + epsilon_TR, -1)
+    TR_cum <- cumprod(1 + TR) - 1
+    #### Brown sector:
+    #TR_brown <- pmax(OP_brown + epsilon_TR,-1)
+    TR_brown <- pmax(intercept_OP_TR + beta_OP_TR * OP_brown + epsilon_TR,-1)
+    TR_brown_cum <- cumprod(1 + TR_brown) - 1
+    
+    ## Store the results into a output:
+    TR_sims_mat[, i] <- TR
+    TR_sims_mat_Brown[, i] <- TR_brown
+    TR_sims_cum_mat[, i] <- TR_cum
+    TR_sims_brown_cum_mat[, i] <- TR_brown_cum 
+    DICE_adj_economic_damage_mat[, i] <- economic_damage_ratio_adj
+    DICE_adj_economic_growth_mat[, i] <- Real_GDP_pred_adj_growth
+}
+equity_TR_excess_adj_OP_DICE_Adj_list[[s]] <- TR_sims_mat
+equity_TR_excess_adj_OP_brown_DICE_Adj_list[[s]] <- TR_sims_mat_Brown
+equity_TR_excess_adj_OP_base_DICE_Adj_list[[s]] <- TR_sims_mat_base
+equity_TR_cum_excess_adj_OP_DICE_Adj_list[[s]] <- TR_sims_cum_mat
+equity_TR_cum_excess_adj_OP_brown_DICE_Adj_list[[s]] <- TR_sims_brown_cum_mat
+DICE_adj_economic_damage_list[[s]] <- DICE_adj_economic_damage_mat
+#DICE_adj_economic_growth_list[[s]] <- DICE_adj_economic_growth_mat
+}
+```
+
+
+```{r Also derive the adjusted consumption growth based on the DICE-adjusted damage ratios}
+DICE_adj_economic_growth_list <- list() 
+for(s in 1:4){
+    Real_GDP_pred_raw <- Real_GDP_forecasts_all[, s]
+    DICE_adj_economic_growth_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    for(i in 1:n.sims){
+    ## Get the damage ratios:
+    damage_ratio <- pmin(DICE_adj_economic_damage_list[[s]][, i], 0.999)
+    ## Constraint the damage ratio to be less than 100% of GDP
+    ## Derive the adjusted GDP:
+    Real_GDP_pred_adj <- c(Real_GDP_pred_raw[1:2], Real_GDP_pred_raw[3:(3+forecast_horizon-1)]*(1-damage_ratio))
+    Real_GDP_pred_adj_growth <- na.omit(Real_GDP_pred_adj/lag(Real_GDP_pred_adj)-1)[-1]
+    DICE_adj_economic_growth_mat[, i] <- Real_GDP_pred_adj_growth
+    }
+DICE_adj_economic_growth_list[[s]] <- DICE_adj_economic_growth_mat
+}
+```
+
+
+```{r Calculation of cumulative investment returns based on adjusted damage ratios}
+investment_returns_real_all_scenarios_DICE_Adj_list <- list()
+investment_returns_nominal_all_scenarios_DICE_Adj_list <- list()
+investment_returns_rates_nominal_all_scenarios_DICE_Adj_list <- list()
+log_investment_returns_nominal_all_scenarios_DICE_Adj_list <- list()
+log_equity_returns_nominal_all_scenarios_DICE_Adj_list <- list()
+log_consumption_cum_growth_all_scenarios_DICE_Adj_list <- list()
+for(s in 1:4){
+    investment_returns_real_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    investment_returns_nominal_cum_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    log_investment_returns_nominal_cum_mat  <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    log_equity_returns_nominal_cum_mat  <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    investment_returns_nominal_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    log_consumption_cum_growth_mat  <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    
+    for(i in 1:n.sims){
+         ## Get the inflation rates:
+         Short_rates_real <-  DFA_components_all_scenarios[[s]]$MEV_module$Real_rates[, i]
+         Short_rates_nominal <- DFA_components_all_scenarios[[s]]$MEV_module$Nominal_rates[, i]
+         adj_eco_growth <-  pmax(DICE_adj_economic_growth_list[[s]][, i], -0.99999)
+         
+         ## Get the brown and other excess return:
+         brown_return <- equity_TR_excess_adj_OP_brown_DICE_Adj_list[[s]][, i]
+         other_return <- equity_TR_excess_adj_OP_DICE_Adj_list[[s]][, i]
+         
+         
+         ## Get the excess equity return:
+         equity_return_excess <- Brown_weight*brown_return + (1-Brown_weight)*other_return
+         #### Get the nominal equity return: 
+         equity_return <- pmax(equity_return_excess + Short_rates_real, -1)
+         equity_return_nominal <- pmax(equity_return_excess + Short_rates_nominal, -1)
+         ## Get the total return
+         investment_return_real <- Risk_free_weight_default*Short_rates_real + (1-Risk_free_weight_default)*equity_return
+         investment_return_nominal <- Risk_free_weight_default*Short_rates_nominal + (1-Risk_free_weight_default)*equity_return_nominal
+        
+         ## Get the cumulative real and nominal investment returns:
+         investment_returns_real_cum_mat[, i] <- cumprod(1 + investment_return_real) - 1
+         investment_returns_nominal_cum_mat[, i] <- cumprod(1 + investment_return_nominal) - 1
+         investment_returns_nominal_mat[, i] <- investment_return_nominal
+         log_investment_returns_nominal_cum_mat[, i] <- log(cumprod(1 + investment_return_nominal))
+         log_equity_returns_nominal_cum_mat[, i] <- log(cumprod(1 + equity_return_nominal))
+         log_consumption_cum_growth_mat[, i] <- log(cumprod(1 + adj_eco_growth))
+    }
+    
+investment_returns_real_all_scenarios_DICE_Adj_list[[s]] <- investment_returns_real_cum_mat
+investment_returns_nominal_all_scenarios_DICE_Adj_list[[s]] <- investment_returns_nominal_cum_mat
+investment_returns_rates_nominal_all_scenarios_DICE_Adj_list[[s]] <- investment_returns_nominal_mat
+log_investment_returns_nominal_all_scenarios_DICE_Adj_list[[s]] <- log_investment_returns_nominal_cum_mat
+log_equity_returns_nominal_all_scenarios_DICE_Adj_list[[s]] <- log_equity_returns_nominal_cum_mat
+log_consumption_cum_growth_all_scenarios_DICE_Adj_list[[s]] <- log_consumption_cum_growth_mat
+}
+```
+
+
+Then calculate the summary statistics of log-scale cumulative investment returns:
+
+```{r Calcualte the quantiles statistics of cummulative investment returns}
+investment_returns_real_quantiles_all_scenarios_DICE_Adj_list <- list()
+investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list <- list()
+log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list <- list()
+log_equity_returns_nominal_quantiles_all_scenarios_DICE_Adj_list <- list()
+DICE_adj_economic_damage_quantiles_all_scenarios_list <- list()
+log_consumption_cum_growth_quantiles_all_scenarios_DICE_Adj_list <- list()
+for(s in 1:4){
+    ## Calculate real cumulative investment returns:
+    investment_returns_real_quantiles_all_scenarios_DICE_Adj_list[[s]] <-  apply(investment_returns_real_all_scenarios_DICE_Adj_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+    ## Calculate nominal cumulative investment returns:
+    investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]] <-  apply(investment_returns_nominal_all_scenarios_DICE_Adj_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+    ## Calculate log compounded investment returns:
+    log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]] <- apply(log_investment_returns_nominal_all_scenarios_DICE_Adj_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+     ## Calculate log compounded equity returns:
+    log_equity_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]] <- apply(log_equity_returns_nominal_all_scenarios_DICE_Adj_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x[is.finite(x) == T], quantile_low = 0.05, quantile_high = 0.95))
+    ## Calculate statistics for adjusted economic growth: 
+    DICE_adj_economic_damage_quantiles_all_scenarios_list[[s]] <- apply(DICE_adj_economic_damage_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+    ## Calculate statistics for cumulative adjusted economic growth:
+    log_consumption_cum_growth_quantiles_all_scenarios_DICE_Adj_list[[s]] <- apply(log_consumption_cum_growth_all_scenarios_DICE_Adj_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+}
+```
+
+```{r Derive the summary statistic for the excess returns}
+equity_TR_excess_adj_OP_DICE_Adj_quantiles_all_scenarios_list <- list()
+equity_TR_excess_adj_OP_Adj_quantiles_all_scenarios_list <- list()
+for(s in 1:4){
+    equity_TR_excess_adj_OP_DICE_Adj_quantiles_all_scenarios_list[[s]] <- apply(equity_TR_excess_adj_OP_DICE_Adj_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+   equity_TR_excess_adj_OP_Adj_quantiles_all_scenarios_list[[s]] <-  apply(equity_TR_excess_adj_OP_list[[s]], MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+}
+```
+
+
+
+### Plot the simulated results
+
+```{r Compare the adjusted economic growth with DICE}
+#pdf("Plotting/Asset/Mean_damage_ratios_2060_DICE_AdjvsUnAdj.pdf")
+## Plot the mean adjusted total damage ratios:
+plot(x = start_year:(start_year+horizon - 1),  y = DICE_adj_economic_damage_quantiles_all_scenarios_list[[1]][2, 1:horizon], col = col_list[1], lwd = 3, type = "l", ylim = c(0, 0.04), xlab = "Forecast periods", ylab = "Damage ratios", main = "Adjusted v.s DICE-implied damage ratios", yaxt = "n")
+axis(2, at = pretty(c(0, 0.04)), labels = paste0(pretty(c(0, 0.04)) * 100, "%"))
+for(s in 2:4){
+    points(x = start_year:(start_year+horizon - 1),  y = DICE_adj_economic_damage_quantiles_all_scenarios_list[[s]][2, 1:horizon], col = col_list[s], lwd = 3, type = "l")
+}
+for(s in 1:4){
+    points(x = start_year:(start_year+horizon - 1), y = damage_ratios_DICE_mat[1:horizon, s], lwd = 3, lty = 2, type = "l", col = col_list[s])
+}
+legend("topleft", legend = c(paste(scenario_list, "(Adjusted)"), paste(scenario_list, "(DICE)")), col = rep(col_list, times = 2), cex = 0.6, lty = c(rep(1, 4), rep(2, 4)), lwd = 2)
+#dev.off()
+```
+
+```{r Plot the quantile range of log-sale of cumulative investment returns based on the adjusted economic growth, fig.height = 3}
+horizon <- 38
+#pdf("Plotting/Asset/Simulations_cum_investment_returns_2060_DICE_adj.pdf")
+plot_quantiles_scenario(log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Cumulative returns (log)", main = "Cumulative investment returns (log-scale; adjusted)", y_range = c(-0.2, 5), colour_list = col_list, horizon = horizon , transparency = 0.1, label_percents = F, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, mean_lwd = 4, quantiles_lwd = 2)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+#dev.off()
+
+## Comparison of mean cumulative investment returns: 
+#pdf("Plotting/Asset/Mean_simulations_cum_investment_returns_2060_DICE_AdjvsUnAdj.pdf")
+plot(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_list[[1]][2, 1:horizon], col = alpha(col_list[1], 0.7), type = "l", lwd = 4, ylim = c(0, 5), xlab = "Years", ylab = "Cumulative returns (log)", main = "Mean log cumulative returns (Unadjusted vs. adjusted for DICE damage ratios)", cex.lab = 1.5, )
+points(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[1]][2, 1:horizon], col = col_list[1], type = "l", lwd = 3, lty = 4, cex.axis = 1.5)
+for(s in 2:4){
+    points(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, 1:horizon], col = alpha(col_list[s], 0.7), type = "l", lwd = 4)
+    points(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]][2, 1:horizon], col = col_list[s], type = "l", lwd = 3, lty = 4)
+}
+legend("topleft", legend = c(paste(scenario_list, "(Unadjusted)"), paste(scenario_list, "(Adjusted)")), col = rep(col_list, times = 2), cex = 0.9, lty = c(rep(1, 4), rep(4, 4)), lwd = 2)
+#dev.off()
+
+## Plot the relative deviations:
+#pdf("Plotting/Asset/Simulations_cum_investment_returns_diff_DICE_adjvsUnadj.pdf")
+plot(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[1]][2, 2:(horizon+1)]/log_investment_returns_nominal_quantiles_all_scenarios_list[[1]][2, 2:(horizon+1)] - 1, col = col_list[1], type = "l", lwd = 4, ylim = c(-0.01, 0.01), yaxt = "n", xlab = "Years", ylab = "Relative difference (%)", main = "Relative difference in (log) cumulative investment returns (DICE-adjusted v.s. DICE-unadjusted)", cex.main = 0.85)
+axis(2, at = pretty(c(-0.01, 0.01)), labels = paste0(pretty(c(-0.01, 0.01)) * 100, "%"))
+for(s in 2:4){
+    points(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]][2, 2:(horizon+1)]/log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, 2:(horizon+1)] - 1, col = col_list[s], type = "l", lwd = 4)
+}
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+#dev.off()
+
+## Comparison of lower bound of cumulative investment returns: 
+#pdf("Plotting/Asset/LowerBound_simulations_cum_investment_returns_2060_DICE_AdjvsUnAdj.pdf")
+# plot(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_list[[1]][1, 1:horizon], col = col_list[1], type = "l", lwd = 4, ylim = c(0, 5), xlab = "Years", ylab = "Cumulative returns (log)", main = "Mean log cumulative returns (Unadjusted vs. adjusted)", cex.lab = 1.5)
+# points(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[1]][1, 1:horizon], col = col_list[1], type = "l", lwd = 4, lty = 4, cex.axis = 1.5)
+# for(s in 2:4){
+#     points(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][1, 1:horizon], col = col_list[s], type = "l", lwd = 4)
+#     points(x = start_year:(start_year+ horizon - 1), y = log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]][1, 1:horizon], col = col_list[s], type = "l", lwd = 4, lty = 4)
+# }
+# legend("topleft", legend = c(paste(scenario_list, "(Unadjusted)"), paste(scenario_list, "(Adjusted)")), col = rep(col_list, times = 2), cex = 0.9, lty = c(rep(1, 4), rep(4, 4)), lwd = 2)
+#dev.off()
+```
+
+```{r Derive the average impact}
+investment_returns_DICE_adj_mean_impact <- c()
+for(s in 1:4){
+    investment_returns_DICE_adj_mean_impact[s] <- mean(log_investment_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]][2, ]/log_investment_returns_nominal_quantiles_all_scenarios_list[[s]][2, ] - 1)
+}
+```
+
+
+```{r Plot the quantile range of log-sale of cumulative equity returns based on the adjusted economic growth}
+#pdf("Plotting/Asset/Simulations_cum_equity_returns_2060_DICE_adj.pdf")
+plot_quantiles_scenario(log_equity_returns_nominal_quantiles_all_scenarios_DICE_Adj_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Cumulative returns (log)", main = "Cumulative investment returns (log-scale; adjusted for DICE damage ratios)", y_range = c(-0.2, 7), colour_list = col_list, horizon = horizon , transparency = 0.1, label_percents = F, cex.main = 0.95, cex.lab = 1, cex.axis = 1, mean_lwd = 4, quantiles_lwd = 2)
+legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+#dev.off()
+
+## Comparison of mean cumulative simulated returns: 
+# plot(log_equity_returns_nominal_cum_quantiles_all_scenarios_list[[1]][2, 1:horizon], col = col_list[1], type = "l", lwd = 4)
+# points(log_equity_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[1]][2, 1:horizon], col = col_list[1], type = "l", lwd = 4, lty = 2)
+# for(s in 2:4){
+#     points(log_equity_returns_nominal_cum_quantiles_all_scenarios_list[[s]][2, 1:horizon], col = col_list[s], type = "l", lwd = 4)
+#     points(log_equity_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]][2, 1:horizon], col = col_list[s], type = "l", lwd = 4, lty = 2)
+# }
+# legend("topleft", legend = c(paste(scenario_list, "(Unadjusted)"), paste(scenario_list, "(Adjusted)")), col = rep(col_list, times = 2), cex = 0.9, lty = c(rep(1, 4), rep(4, 4)), lwd = 2)
+# # 
+# plot(log_equity_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[1]][2, 2:(horizon+1)]/log_equity_returns_nominal_cum_quantiles_all_scenarios_list[[1]][2, 2:(horizon+1)] - 1, col = col_list[1], type = "l", lwd = 4, ylim = c(-0.02, 0.02))
+# for(s in 2:4){
+#     points(log_equity_returns_nominal_quantiles_all_scenarios_DICE_Adj_list[[s]][2, 2:(horizon+1)]/log_equity_returns_nominal_cum_quantiles_all_scenarios_list[[s]][2, 2:(horizon+1)] - 1, col = col_list[s], type = "l", lwd = 4)
+# }
+```
+
+```{r Comparison of excess equity returns}
+# plot(equity_TR_excess_adj_OP_DICE_Adj_quantiles_all_scenarios_list[[1]][2, 1:horizon]/equity_TR_excess_adj_OP_Adj_quantiles_all_scenarios_list[[1]][2, 1:horizon] - 1, type = "l", col = col_list[1])
+# for(s in 2:4){
+# points(equity_TR_excess_adj_OP_DICE_Adj_quantiles_all_scenarios_list[[s]][2, 1:horizon]/equity_TR_excess_adj_OP_Adj_quantiles_all_scenarios_list[[s]][2, 1:horizon] - 1, type = "l", col = col_list[s])
+# }
+```
+
+
+```{r Comparison of compounded economic growth}
+## Plot of compounded economic growth:
+#pdf("Plotting/Asset/Log_compound_economic_growth_benchmarking.pdf")
+plot(x = start_year:(start_year + horizon - 1), y =  log_gdp_potential_cum_growth_mat[1:horizon, 1], col = col_list[1], type = "l", ylim = c(0, 1.5), xlab = "Years", ylab = "Compounded growth (log)", main = "Cumulative economic growth (log-scale; adjusted)", cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 1.5)
+## Plot simulated cumulative growth: 
+points(x = start_year:(start_year + horizon - 1), y = log_consumption_cum_growth_quantiles_all_scenarios_list[[1]][2, 1:horizon], col = col_list[1], type = "l", lty = 2, lwd = 1.5)
+## Plot DICE adjusted growth:
+points(x = start_year:(start_year + horizon - 1), y = log_consumption_cum_growth_quantiles_all_scenarios_DICE_Adj_list[[1]][2, 1:horizon], col = col_list[1], type = "l", lty = 4, lwd = 1.5)
+
+for(s in 2:4){
+    points(x = start_year:(start_year + horizon - 1), y =  log_gdp_potential_cum_growth_mat[1:horizon, s], col = col_list[s], type = "l", lwd = 1.5)
+    points(x = start_year:(start_year + horizon - 1), y = log_consumption_cum_growth_quantiles_all_scenarios_list[[s]][2, 1:horizon], col = col_list[s], type = "l", lty = 2, lwd = 1.5)
+    points(x = start_year:(start_year + horizon - 1), y = log_consumption_cum_growth_quantiles_all_scenarios_DICE_Adj_list[[s]][2, 1:horizon], col = col_list[s], type = "l", lty = 4, lwd = 1.5)
+}
+legend("topleft", legend = c(paste(scenario_list, "(raw)"), paste(scenario_list, "(Damage-adjusted)"), paste(scenario_list, "(Damage-adjusted; scaled for DICE)")), col = col_list, cex = 0.6, lty = c(rep(1, 4), rep(2, 4), rep(4, 4)), lwd = rep(1.5, 4))
+#dev.off()
+```
+
+### Benchmarking of damage ratios with alternative study
+
+
+```{r Import the IAM data}
+# The IAM data are sourced from: https://purl.stanford.edu/wb587wt4560
+IAM_damage_data <- read.csv("Supplementary data/IAMdata/ProcessedKoppData.csv")
+SSP_temp_dat2060 <- SSP_temp_dat %>% filter(Year == 2060)
+IAM_damage_data_PAGE <- IAM_damage_data %>% filter(IAM == "PAGE") %>% filter(abs(`T` - SSP_temp_dat2060$`SSP 1.00`) == min(abs(`T` - SSP_temp_dat2060$`SSP 1.00`)) | abs(`T` - SSP_temp_dat2060$`SSP 5.00`) == min(abs(`T` - SSP_temp_dat2060$`SSP 5.00`)))
+IAM_damage_data_FUND <- IAM_damage_data %>% filter(IAM == "FUND") %>% filter(abs(`T` - SSP_temp_dat2060$`SSP 1.00`) == min(abs(`T` - SSP_temp_dat2060$`SSP 1.00`)) | abs(`T` - SSP_temp_dat2060$`SSP 5.00`) == min(abs(`T` - SSP_temp_dat2060$`SSP 5.00`)))
+IAM_damage_data_PAGE <- IAM_damage_data %>% filter(IAM == "PAGE") %>% filter(abs(`T` - SSP_temp_dat2060$`SSP 1.00`) == min(abs(`T` - SSP_temp_dat2060$`SSP 1.00`)) | abs(`T` - SSP_temp_dat2060$`SSP 5.00`) == min(abs(`T` - SSP_temp_dat2060$`SSP 5.00`)))
+    
+    #filter(round(`T`, 0) == round(SSP_temp_dat2060$`SSP 1.00`, 0) | round(`T`, 1) == round(SSP_temp_dat2060$`SSP 5.00`, 1))
+
+```
+
+
+```{r Compare the alternative damage ratios}
+horizon_bm <- 38
+# Summarise the damage ratios and damage-adjusted GDP: 
+damage_ratios_SSP26_bm <- c(IAM_damage_data_FUND$damages[1]/100,IAM_damage_data_PAGE$damages[1]/100,damage_ratios_DICE2016_mat[horizon_bm, 1], damage_ratios_DICE_mat[horizon_bm, 1], NA)
+damage_ratios_SSP85_bm <- c(IAM_damage_data_FUND$damages[2]/100,IAM_damage_data_PAGE$damages[2]/100, damage_ratios_DICE2016_mat[horizon_bm, 4], damage_ratios_DICE_mat[horizon_bm, 4], 0.2)
+## Summarise damage ratios: 
+damage_ratios_benchmark_data_2060 <- data.frame(Models = c("FUND 3.8","PAGE09", "DICE-2016R2", "DICE-2023", "BHM-2015"), Damage_ratio_SSP26 = damage_ratios_SSP26_bm, Damage_ratio_SSP85 = damage_ratios_SSP85_bm)
+## Summarise adjusted GDP for climate damage: 
+GDP_benchmark_data_2060 <- data.frame(Models = c("Raw","FUND 3.8","PAGE09", "DICE-2016R2", "DICE-2023",  "BHM-2015"), GDP_adjusted_SSP26 = Real_GDP_forecasts_all[horizon_bm, ]$`SSP 1.00`*c(1, 1 - damage_ratios_SSP26_bm), GDP_adjusted_SSP85 = Real_GDP_forecasts_all[horizon_bm, ]$`SSP 5.00`*c(1, 1 - damage_ratios_SSP85_bm))
+
+# Convert it to damage ratios: 
+damage_ratios_benchmark_mat_2060 <- as.matrix(damage_ratios_benchmark_data_2060[, -1])
+rownames(damage_ratios_benchmark_mat_2060) = damage_ratios_benchmark_data_2060$Models
+colnames(damage_ratios_benchmark_mat_2060) = c("SSP 2.6", "SSP 8.5")
+
+GDP_benchmark_mat_2060 <- as.matrix(GDP_benchmark_data_2060[, -1])
+rownames(GDP_benchmark_mat_2060) = GDP_benchmark_data_2060$Models
+colnames(GDP_benchmark_mat_2060) = c("SSP 2.6", "SSP 8.5")
+
+# Generate barplot: 
+## Plot the projected damage ratios: 
+pdf("Plotting/Asset/Damage_ratios_comparison_2060.pdf")
+bp_damage_ratios <- barplot(damage_ratios_benchmark_mat_2060, beside = TRUE, yaxt = "n", ylim = c(0, 0.4), col = gray(seq(0.95, 0, length.out = 5)), main = "Comparison of projected damage ratio (at 2060)")
+axis(2, at = pretty(c(0, 0.3)), labels = paste0(pretty(c(0, 0.3)) * 100, "%"))
+legend("topleft", legend = damage_ratios_benchmark_data_2060$Models, fill =  gray(seq(0.95, 0, length.out = 5)), cex = 0.7)
+text(x = bp_damage_ratios, y = as.vector(damage_ratios_benchmark_mat_2060), labels = percent(as.vector(damage_ratios_benchmark_mat_2060), accuracy = 0.01), pos = 3, cex = 0.65, col = "black")
+dev.off()
+## Plot the damage-adjusted GDP: 
+pdf("Plotting/Asset/AdjustedGDP_comparison_2060.pdf")
+barplot(GDP_benchmark_mat_2060, beside = TRUE, col = gray(seq(0.95, 0, length.out = 6)), main = "Comparison of damage-adjusted GDP (at 2060)", ylim = c(0, 1.3e13))
+abline(h = GDP_benchmark_data_2060[GDP_benchmark_data_2060$Models == "BHM-2015", ]$GDP_adjusted_SSP85, lty = 2, col = "red", lwd = 2)
+legend("topleft", legend = GDP_benchmark_data_2060$Models, fill =  gray(seq(0.95, 0, length.out = 6)), cex = 0.7)
+dev.off()
+```
+
 
