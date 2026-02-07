@@ -31,6 +31,7 @@ All code used to generate the results can be found in the Rmarkdown file: `DFA_m
     - All graphs shown in Section 3.2 in the paper are plotted in **Presentations of simulation results**. 
     
 - **Section 3.3 Risk and return measures**: This section presents the results shown in Section 3.3 in the paper.
+- **Sensitivity analysis**: This section presents the sensitivity analysis results reported in the paper’s appendices.
 
 The miscellaneous data cleansing scripts are stored in the folder `Miscellaneous data cleaning codes`. These scripts are optional for users to run and can all be executed from within `DFA_model_final.Rmd`.
 
