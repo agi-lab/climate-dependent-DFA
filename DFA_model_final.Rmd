@@ -853,6 +853,19 @@ calc_reinsurance_recoveries_norm <- function(horizon, market_cap, scenario_index
      }
      return(list(Reinsurance_recov = Re_recoveries_mat, CAT_loss_net = CAT_loss_mat))
 }
+
+calc_reinsurance_recoveries_norm_stationary <- function(horizon, market_cap, reinsurance_excess, reinsurance_limit_multiple, DFA_list){
+     Re_recoveries_mat <- matrix(NA, nrow = horizon, ncol = n.sims)
+     CAT_loss_mat <- matrix(NA, nrow = horizon, ncol = n.sims)
+     for(i in 1:n.sims){
+     ## Get the gross CAT losses:
+     CAT_losses_gross <- DFA_list$Liabilities_module$CAT_normalised_loss[1:horizon, i]*market_cap
+     ## Get the net CAT losses:
+     Re_recoveries_mat[, i] <-  pmax(pmin(CAT_losses_gross-reinsurance_excess, reinsurance_excess*reinsurance_limit_multiple), 0)
+     CAT_loss_mat[, i] <- CAT_losses_gross - pmax(pmin(CAT_losses_gross-reinsurance_excess, reinsurance_excess*reinsurance_limit_multiple), 0)
+     }
+     return(list(Reinsurance_recov = Re_recoveries_mat, CAT_loss_net = CAT_loss_mat))
+}
 ```
 
 
@@ -1014,6 +1027,36 @@ find_elements_file <- function(filenames, element_1, element_2) {
   return(matching_elements)
 }
 ```
+
+
+```{r Define simulation functions under the stationary cases}
+## Simulation for CAT counts: ----------------
+simulate_Pois_GLM_stationary <- function(model, horizon = forecast_horizon){
+    pred_freq <- mean(predict(model, type = "response"))
+    simulate_response <- rpois(horizon, pred_freq)
+    return(list(Count_yy = simulate_response))
+}
+
+## Simulation for CAT severity: ---------------
+sim_LN_CAT_losses_func_stationary <- function(LN_model, CAT_count, horizon = forecast_horizon){
+    pred_mu_LN <- mean(predict(LN_model, type = "response", what = "mu"))
+    pred_sigma_LN <- mean(predict(LN_model, type = "response", what = "sigma"))
+    #CAT_loss_individual <- list()
+    CAT_loss_aggregate <- c()
+    ## Obtain the simulations
+    for(i in 1:horizon){
+        ## Simulate the LN losses:
+        sim_LN <- rlnorm(CAT_count[i], meanlog  = pred_mu_LN, sdlog  = pred_sigma_LN)
+        ## Simulate the CAT losses:
+        CAT_loss <- sim_LN 
+        #CAT_loss_individual[[i]] <- CAT_loss
+        CAT_loss_aggregate[i] <- sum(CAT_loss)
+        
+    }
+return(CAT_loss_aggregate)
+}
+```
+
 
 
 
@@ -1373,6 +1416,12 @@ summary_flood_freq_model_data
 modelsummary(list("Model 1" = glm_Flood_freq_1, "Model 2" = glm_Flood_freq_2, "Model 3*" = glm_Flood_freq_3, "Model 4" = glm_Flood_freq_4, "Model 5" = glm_Flood_freq_5, "Model 6" = glm_Flood_freq_6), statistic = "p.value", stars = TRUE, gof_omit = "Num.Obs.|RMSE")
 ```
 
+
+
+```{r Fit stationary model for flood frequency}
+glm_Flood_freq_stationary <- glm(CAT_count ~ 1, family = poisson(link = "log"), data = CAT_food_ICA_count)
+```
+
 #### Flood severity
 
 
@@ -1421,6 +1470,11 @@ summary_flood_sev_model_data
 modelsummary(list("Model 1" = glm_Flood_sev_1, "Model 2" = glm_Flood_sev_2, "Model 3*" = glm_Flood_sev_3, "Model 4" = glm_Flood_sev_4, "Model 5" = glm_Flood_sev_5, "Model 6" = glm_Flood_sev_6), statistic = "p.value", stars = TRUE, coef_omit = "Intercept", gof_omit = "Num.Obs.|RMSE")
 ```
 
+
+```{r Fit stationary model for flood severity}
+glm_Flood_sev_stationary <- gamlss(formula =  CAT_loss_normalised_GDP ~ 1, data = CAT_food_ICA_loss, family = LOGNO(mu.link="identity", sigma.link="log"), trace = FALSE)
+
+```
 
 
 ### Bushfire
@@ -1490,6 +1544,10 @@ summary_Bush_freq_model_data <- data.frame(Model = 1:3, Covariates = c("mfwixx",
 summary_Bush_freq_model_data
 ```
 
+```{r Fit stationary frequency model bushfire}
+glm_Bush_freq_stationary <- glm(CAT_count ~ 1, data = CAT_Bushfire_ICA_count, family = poisson(link = "log"))
+```
+
 
 
 #### Bushfire severity
@@ -1526,6 +1584,10 @@ summary_Bush_sev_model_data <- data.frame(Model = 0:3, Covariates = c("Stationar
                    BIC(glm_Bush_sev_3))) %>% mutate(Rank_AIC = rank(AIC), Rank_BIC = rank(BIC))
 
 summary_Bush_sev_model_data
+```
+
+```{r Fit stationary severity model bushfire}
+glm_Bush_sev_stationary <- gamlss(formula =  CAT_loss_normalised_GDP ~ 1, data = CAT_Bushfire_ICA_loss, family = LOGNO(mu.link="identity", sigma.link="log"), trace = FALSE)
 ```
 
 
@@ -1648,6 +1710,10 @@ summary_Cyc_mm_perf
 ```
 
 
+```{r Fit stationary frequency model TC}
+glm_Cyc_freq_stationary <- glm(CAT_count ~ 1, data = CAT_Cyclone_ICA_count, family = poisson(link = "log"))
+```
+
 #### TC severity
 
 Based on the non-linear relationship observed between normalised severity and monthly average SST (and also between normalised severity and monthly average MSLP), the following models are fitted:
@@ -1670,6 +1736,10 @@ summary_Cyc_sev_MM_model_perf <- data.frame(Models = 0:4, Covaritaes = c("Statio
 summary_Cyc_sev_MM_model_perf
 ```
 
+
+```{r Fit stationary severity model TC}
+glm_Cyc_sev_stationary <- gamlss(formula =  CAT_loss_normalised_GDP ~ 1, data = CAT_Cyclone_ICA_loss_mm, family = LOGNO(mu.link="identity", sigma.link="log"), trace = FALSE)
+```
 
 #### TC model summary
 
@@ -1713,6 +1783,9 @@ summary_Storm_mm_perf <- data.frame(Models = 1:3, Covariates = c("SST (Monthly a
 summary_Storm_mm_perf
 ```
 
+```{r Fit stationary frequency model Storm}
+glm_Storm_freq_stationary <- glm(CAT_count ~ 1, data = CAT_Storm_ICA_count, family = poisson(link = "log"))
+```
 
 #### Storm severity
 
@@ -1728,6 +1801,12 @@ glm_Storm_sev_mm_3 <- gamlss(formula =  CAT_loss_normalised_GDP ~ MSLP_mm + SST_
 summary_Storm_sev_MM_model_perf <- data.frame(Models = 0:3, Covaritaes = c("Stationary", "SST", "MSLP", "SST+MSLP"), AIC = c(glm_Storm_sev_0$aic, glm_Storm_sev_mm_1$aic, glm_Storm_sev_mm_2$aic, glm_Storm_sev_mm_3$aic), BIC = c(BIC(glm_Storm_sev_0), BIC(glm_Storm_sev_mm_1), BIC(glm_Storm_sev_mm_2), BIC(glm_Storm_sev_mm_3))) %>% mutate(Rank_AIC = rank(AIC)) %>% mutate(Rank_BIC = rank(BIC))
 summary_Storm_sev_MM_model_perf
 ```
+
+```{r Fit stationary severity model Storm}
+glm_Storm_sev_stationary <- gamlss(formula =  CAT_loss_normalised_GDP ~ 1, data = CAT_Storm_ICA_loss_mm, family = LOGNO(mu.link="identity", sigma.link="log"), trace = FALSE)
+```
+
+
 
 #### Storm model summary
 
@@ -1835,6 +1914,9 @@ print("===========Coefficients under Model 2======================")
 summary(glm_ECL_freq_2)$coefficients
 ```
 
+```{r Fit a stationary ECL frequency model}
+glm_ECL_freq_stationary <- glm(CAT_count ~ 1, data = CAT_ECL_ICA_count, family = poisson(link = "log"))
+```
 
 #### ECL severity
 
@@ -1843,6 +1925,10 @@ Given the limited amount of data and the high uncertainty in the projected inten
 ```{r ECL severity}
 glm_ECL_sev_0 <- gamlss(formula = CAT_loss_normalised_GDP ~ 1, family = LOGNO(mu.link = "identity",  
     sigma.link = "log"), data = CAT_ECL_ICA_loss_mm, trace = FALSE) 
+```
+
+```{r Fit a stationary ECL severity model}
+glm_ECL_sev_stationary <- glm_ECL_sev_0 
 ```
 
 #### ECL model summary
@@ -1876,6 +1962,10 @@ glm_HS_freq <- glm(CAT_count ~ Air_temperature  + NS_temperature, data = CAT_HL_
 summary(glm_HS_freq)$coefficients
 ```
 
+```{r Hail storm frequency model stationary}
+glm_HS_freq_stationary <- glm(CAT_count ~ 1, data = CAT_HL_ICA_count, family = poisson(link = "log"))
+glm_HS_freq_stationary
+```
 
 #### Hailstorm severity
 
@@ -1884,6 +1974,7 @@ The non-stationary Log-Normal model (which uses air temperature as the covariate
 ```{r Hail storm severity model}
 glm_HS_sev_0 <- gamlss(formula = CAT_loss_normalised_GDP ~ 1, family = LOGNO(mu.link = "identity",  
     sigma.link = "log"), data = CAT_HL_ICA_loss_mm,  trace = FALSE)
+glm_HS_sev_stationary <- glm_HS_sev_0
 glm_HS_sev_1 <- gamlss(formula = CAT_loss_normalised_GDP ~ Air_temperature + NS_temperature, family = LOGNO(mu.link = "identity", sigma.link = "log"), data = CAT_HL_ICA_loss_mm,  trace = FALSE)
 
 data.frame(Models =0:1, Covariates = c("Stationary", "Atmospheric temperature + NS temperature"), AIC = c(glm_HS_sev_0$aic, glm_HS_sev_1$aic), BIC = c(BIC(glm_HS_sev_0), BIC(glm_HS_sev_1))) %>% mutate(AIC_rank = rank(AIC), BIC_rank = rank(BIC))
@@ -1974,6 +2065,21 @@ Provide a model summary of the interest rate model with potential GDP:
 ```{r Model summary of Real Short rates and Real GDP growth}
 modelsummary(list("lm (Short-rates)" = lm_SR_GDP_potential), statistic = "p.value", stars = TRUE, gof_omit = "RMSE|R2|R2 Adj.|RMSE|Num.Obs.|F")
 ```
+
+
+Fit a interest rate model under the stationary setting:
+
+- An AR(1) model is fitted, which can be viewed as a special case of the generalised CIR model in Kaufmann et al. (2000) when the parameter $g$ is set to zero.
+
+```{r Stationary interest rate model}
+SR_mod_AR1_stationary <- sarima(AU_interest_rates_GDP_potential$Short_rates_real, 1, 0, 0, details = FALSE)
+SR_mod_AR1_stationary$ttable
+## Plot the forecast: ---------
+real_rates_forecast_stationary <- sarima.for(AU_interest_rates_GDP_potential$Short_rates_real, n.ahead = 38, 1, 0, 0, plot = TRUE, xlab = "Periods", main = "Forecast of real rates (stationary)")
+```
+
+
+
 
 
 ## Liabilities module (Non-Catastrophe claims)
@@ -2109,6 +2215,22 @@ Exposure_forecasts_other <- expsmooth(GI_other_exposure_pop_data$Exposure_other,
 #non_catastrophe_loss_model_list <- list(Non_CAT_PM = tw_PM_0)
 
 ```
+
+Under the stationary case, we assume the exposure follows the AR(1) process as per Kaufmann et al (2000): 
+
+
+```{r Fit stationary exposure growth model}
+## Derive growth rate of exposure: -----
+Exposure_growth_rates <- as.numeric(na.omit(GI_exposure_pop_data$Exposure/lag(GI_exposure_pop_data$Exposure) - 1))
+## Fit a AR(1) model on the exposure growth rates: -----
+lm_exposure_growth_stationary <- sarima(Exposure_growth_rates, 1, 0, 0, details = FALSE)
+lm_exposure_growth_stationary$ttable
+## Forecast of exposure growth rates: -----
+exposure_growth_forecast_stationary <- sarima.for(Exposure_growth_rates, n.ahead = 38, 1, 0, 0, details = FALSE, xlab = "Periods", main = "Forecast of exposure growth rates")
+
+```
+
+
 
 
 
@@ -2250,6 +2372,14 @@ scalar_impact_WDS_NI <- mean(Scalar_NI_list[-4])
 ```
 
 
+### Calibration of stationary equiry returns model
+
+```{r Calibrate the stationary equity return model}
+lm_OP_TR_stationary <- lm(Total_return ~ 1, data = TR_all_OP_ord_shares_yy_data, subset = Year %nin% c(2008, 2009, 2012))
+```
+
+
+
 # Section 3.2 Key simulation results from individual modules
 
 This section generates the results shown in Section 3.2 in the paper. 
@@ -2271,7 +2401,6 @@ Clim_proj_clean <- T ## indicate weather climate projections have been imported 
 scenario_list <- c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5") ## Define the list of SSP scenarios
 col_list <- c(green_col, orange_col, red_col, purple_col) ## Define the colour used for plotting the simulations
 ```
-
 
 
 
@@ -3233,6 +3362,36 @@ model_nonCAT_other <- tw_other_0
 power_tw <- 1.99 ## Enter the power index based on the regression output from `model_nonCAT`
 ```
 
+### Define additional stationary input parameters
+
+```{r Define inputs under the stationary setting}
+## Exposure forecasts -----------
+exposure_growth_pred_stationary <- as.numeric(sarima.for(Exposure_growth_rates, n.ahead = forecast_horizon, 1, 0, 0, plot = FALSE)$pred)
+
+Exposure_forecasts_stationary <- Exposure_start * cumprod(1 + exposure_growth_pred_stationary)
+
+## GDP forecasts -----------
+
+GDP_growth_forecasts_stationary <- as.numeric(sarima.for(AU_interest_rates_GDP_potential$GDP_potential_growth, n.ahead = forecast_horizon, 1, 0, 0, plot = FALSE)$pred)
+
+GDP_forecasts_stationary <- Real_GDP_start * cumprod(1 + GDP_growth_forecasts_stationary)
+
+## Interest rates:-----------
+
+mu_SR_stationary <- SR_mod_AR1_stationary$ttable["xmean" , "Estimate"]
+phi_SR_stationary <- SR_mod_AR1_stationary$ttable["ar1" , "Estimate"]
+sigma_SR_stationary <- sqrt(SR_mod_AR1_stationary$fit$sigma2)
+SR_start <- last(AU_interest_rates_GDP_potential$Short_rates_real)
+
+## Equity returns: -------------
+
+mu_TR_stationary <- summary(lm_OP_TR_stationary)$coefficients[1]
+sigma_TR_stationary <- summary(lm_OP_TR_stationary)$sigma
+```
+
+
+
+
 
 ### Perform the simulations
 
@@ -3514,6 +3673,10 @@ save(DFA_components_all_scenarios, file = "Simulated_results_DFA_components_sims
 ```
 
 
+
+
+
+
 Extract the calibrated coefficients for the climate module: 
 
 ```{r Extract coefficients from bias corrected models}
@@ -3701,6 +3864,189 @@ for(s in 1:4){
    equity_TR_adj_OP_sd_list[[s]] <- apply(equity_TR_excess_adj_OP_list[[s]], MARGIN = 1, FUN = sd) 
 }
 ```
+
+### Perform the stationary simulations
+
+
+
+
+
+```{r Write a function to simulate DFA components under the stationary case}
+
+simulate_DFA_components_stationary_func <- function(n.sims){
+    
+    ## Define empty matrices to store the ouptuts
+   
+    ##### MEV module ##### 
+    simulated_results_inflation_clim <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    Interest_Rates_sim_SR <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    Interest_Rates_norminal <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    #### Hazard module #####
+    Flood_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    BF_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    TC_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    Storm_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    ECL_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    HS_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    #### Liabilities module #####
+    CAT_norm_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    CAT_nominal_loss_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    CAT_damage_ratio_sims_mat <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    
+    Non_CAT_losses_agg <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    Non_CAT_losses_agg_withInflation <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    
+    Non_CAT_other_losses_agg <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    Non_CAT_other_losses_agg_withInflation <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+        
+    
+    for(i in 1:n.sims){
+            ########################################################################
+            #### #### #### #### Interest rates simulations #### #### #### #### #### 
+            ########################################################################
+            
+            ## Simulate the baseline interest rates:
+            simulated_SR <- simulate_SR_AR1(intercept = mu_SR_stationary, phi = phi_SR_stationary, sigma = sigma_SR_stationary, n = (forecast_horizon + 1), start_value = SR_start)[-1]
+            
+            ########################################################################
+            
+            ########################################################################
+            #### #### #### #### Inflation rates simulations #### #### #### #### #### 
+            ########################################################################
+            ## Calculate the climate-adjusted inflation rates:
+             Inflation_rates_sim <- simulateAR1_Inflation_Clim(mu = inflation_mod_bench$coef[2], phi = inflation_mod_bench$coef[1], sigma = sqrt(inflation_mod_bench$sigma2), n = forecast_horizon, start_value = inflation_rate_start, start_value_CPI = CPI_start, Climate_pressure = rep(0, forecast_horizon))
+            
+             ########################################################################
+            #### #### #### #### Calculate the nominal rates #### #### #### #### #### 
+            ########################################################################
+             
+            ### Calculate the nominal rates:
+            simulated_SR_nominal <- pmax(simulated_SR + Inflation_rates_sim$Inflation_rate, 0) ## Floor the nominal rates at zero
+    
+             
+            ########################################################################
+            #### #### #### #### Hazard module simulations #### #### #### #### #### 
+            ########################################################################
+            
+            ## Flood
+            Flood_count_sim <- simulate_Pois_GLM_stationary(glm_Flood_freq_stationary, horizon = forecast_horizon)$Count_yy
+            Flood_total_norm_loss_sim <- sim_LN_CAT_losses_func_stationary(glm_Flood_sev_stationary, Flood_count_sim, horizon = forecast_horizon)
+
+            ## Bushfire:
+            BF_count_sim <- simulate_Pois_GLM_stationary(glm_Bush_freq_stationary, horizon = forecast_horizon)$Count_yy
+            BF_total_norm_loss_sim <- sim_LN_CAT_losses_func_stationary(glm_Bush_sev_stationary, BF_count_sim, horizon = forecast_horizon)
+            
+            ## TC
+            TC_count_sim <- simulate_Pois_GLM_stationary(glm_Cyc_freq_stationary, horizon = forecast_horizon)$Count_yy
+            TC_total_norm_loss_sim <- sim_LN_CAT_losses_func_stationary(glm_Cyc_sev_stationary, TC_count_sim, horizon = forecast_horizon)
+            
+            ## Storm
+            Storm_count_sim <- simulate_Pois_GLM_stationary(glm_Storm_freq_stationary, horizon = forecast_horizon)$Count_yy
+            Storm_total_norm_loss_sim <- sim_LN_CAT_losses_func_stationary(glm_Storm_sev_stationary, Storm_count_sim, horizon = forecast_horizon)
+            
+            ## ECL
+            ECL_count_sim <- simulate_Pois_GLM_stationary(glm_ECL_freq_stationary, horizon = forecast_horizon)$Count_yy
+            ECL_total_norm_loss_sim <- sim_LN_CAT_losses_func_stationary(glm_ECL_sev_stationary, ECL_count_sim, horizon = forecast_horizon)
+            
+            ## Hailstorm
+            HS_count_sim <- simulate_Pois_GLM_stationary(glm_HS_freq_stationary, horizon = forecast_horizon)$Count_yy
+            HS_total_norm_loss_sim <- sim_LN_CAT_losses_func_stationary(glm_HS_sev_stationary, HS_count_sim, horizon = forecast_horizon)
+             ########################################################################
+            #### #### #### #### Liabilities module #### #### #### #### #### 
+            ########################################################################
+            # CAT losses:
+            ## Calculate normalised aggregate losses
+             sim_CAT_losses <- Flood_total_norm_loss_sim + BF_total_norm_loss_sim + TC_total_norm_loss_sim + Storm_total_norm_loss_sim + ECL_total_norm_loss_sim + HS_total_norm_loss_sim
+            ## Adjust the CAT loss for wealth exposure, and cap the simulated losses at the exposure:
+            sim_CAT_losses_GDP_adj <- pmin(sim_CAT_losses*GDP_forecasts_stationary/Real_GDP_start, GDP_forecasts_stationary)
+            sim_CAT_damage_ratio <- sim_CAT_losses_GDP_adj/GDP_forecasts_stationary
+            ## Also adjust the CAT loss for price level:
+            sim_CAT_losses_full_adj <- sim_CAT_losses_GDP_adj*Inflation_rates_sim$CPI/CPI_start
+            
+            # Non-CAT losses:
+            ## Non-CAT losses for property, motor, fire and ISR: 
+            sim_Non_CAT_avg <- sim_tweedie(mu = rep(exp(model_nonCAT$coefficients), forecast_horizon), phi = summary(model_nonCAT)$dispersion, power = power_tw)
+            sim_Non_CAT_agg <- sim_Non_CAT_avg*Exposure_forecasts_stationary
+            sim_Non_CAT_agg_withInflation <- sim_Non_CAT_agg*Inflation_rates_sim$CPI/CPI_start
+             ## Non-CAT losses for other BoLs:
+            sim_Non_CAT_other_avg <- sim_tweedie(mu = rep(exp(model_nonCAT_other$coefficients), forecast_horizon), phi = summary(model_nonCAT_other)$dispersion, power = power_tw)
+            sim_Non_CAT_other_agg <- sim_Non_CAT_other_avg*Exposure_forecasts_other
+            sim_Non_CAT_other_agg_withInflation <- sim_Non_CAT_other_agg*Inflation_rates_sim$CPI/CPI_start
+            
+        
+            
+        ########################################################################
+        ### Store the outputs ####
+        ########################################################################
+         
+        ##### MEV module ##### 
+        simulated_results_inflation_clim[, i] <- Inflation_rates_sim$Inflation_rate
+        Interest_Rates_sim_SR[, i] <- simulated_SR
+        Interest_Rates_norminal[, i] <- simulated_SR + Inflation_rates_sim$Inflation_rate
+        
+        ### Hazard module ### 
+            
+        Flood_loss_sims_mat[, i] <- Flood_total_norm_loss_sim
+        BF_loss_sims_mat[, i] <- BF_total_norm_loss_sim
+        TC_loss_sims_mat[, i] <- TC_total_norm_loss_sim
+        Storm_loss_sims_mat[, i] <- Storm_total_norm_loss_sim
+        ECL_loss_sims_mat[, i] <- ECL_total_norm_loss_sim
+        HS_loss_sims_mat[, i] <- HS_total_norm_loss_sim
+        
+        #### Liabilities module #####
+        CAT_norm_loss_sims_mat[, i] <- sim_CAT_losses
+        CAT_nominal_loss_sims_mat[, i] <- sim_CAT_losses_full_adj
+        CAT_damage_ratio_sims_mat[, i] <- sim_CAT_damage_ratio
+        
+        Non_CAT_losses_agg[, i] <- sim_Non_CAT_agg
+        Non_CAT_losses_agg_withInflation[, i] <- sim_Non_CAT_agg_withInflation
+        
+        Non_CAT_other_losses_agg[, i] <- sim_Non_CAT_other_agg
+        Non_CAT_other_losses_agg_withInflation[, i] <- sim_Non_CAT_other_agg_withInflation
+        
+        }
+ 
+    ## Define a list to store the MEV outputs
+    MEV_list <- list(Inflation_rates = simulated_results_inflation_clim,
+                     Real_rates = Interest_Rates_sim_SR,
+                     Nominal_rates = Interest_Rates_norminal)
+    
+    Hazard_severity_list <- list(Flood =  Flood_loss_sims_mat,
+        Bushfire = BF_loss_sims_mat,
+        TC = TC_loss_sims_mat,
+        Storm = Storm_loss_sims_mat,
+        ECL = ECL_loss_sims_mat,
+        Hailstorm = HS_loss_sims_mat)
+    ## Define a list to store the liabilities module outputs
+    Liabilities_list <- list(CAT_normalised_loss = CAT_norm_loss_sims_mat,
+                             CAT_damage_ratio = CAT_damage_ratio_sims_mat,
+                             CAT_nominal_loss = CAT_nominal_loss_sims_mat,
+                             Non_CAT_loss = Non_CAT_losses_agg,
+                             Non_CAT_loss_nominal = Non_CAT_losses_agg_withInflation,
+                             Non_CAT_other_loss = Non_CAT_other_losses_agg,
+                             Non_CAT_other_loss_nominal = Non_CAT_other_losses_agg_withInflation)
+ 
+    ## Define a list to store all DFA components:
+    DFA_components_list <- list(MEV_module = MEV_list,
+                                Hazard_module_sev = Hazard_severity_list,
+                                Liabilities_module = Liabilities_list)
+   
+     return(DFA_components_list)
+}
+
+```
+
+```{r Simulations of DFA under stationary case}
+DFA_components_stationary <- simulate_DFA_components_stationary_func(n.sims)
+```
+
+
+```{r Save simulation results of environmental variables under stationary case}
+save(DFA_components_stationary, file = "Simulated_results_stationary_DFA_components_sims10000.Rdata")
+```
+
+
+
 
 
 ### Insurance market assumptions
@@ -4173,6 +4519,15 @@ for(s in 1:4){
 colnames(Hazard_var_agg_mat) = Scenarios_list
 ```
 
+```{r Save variance of CAT claims cost}
+var_CAT_norm_claims_list <- list(Flood = Flood_var_mat, Bushfire = Bushfire_var_mat,
+                                 TC = TC_var_mat, Storm = Storm_var_mat,
+                                 ECL = ECL_var_mat, HS = HS_var_mat)
+save(var_CAT_norm_claims_list, file = "results/Variance_CAT_claims_cost_normalised.Rdata")
+```
+
+
+
 
 Calculate the coefficients of variance for CAT losses: 
 
@@ -4183,6 +4538,8 @@ for(s in 1:4){
    CoV_hazard_loss_mat[, s] <- sqrt(Hazard_var_agg_mat[, s])/Hazard_loss_pred_dat[, s + 1]
 }
 ```
+
+
 
 
 Also derive the premium loadings for non-catastrophe losses under the property, motor, fire and ISR (PMFI) line :
@@ -4232,6 +4589,11 @@ for(s in 1:4){
 }
 ```
 
+```{r}
+#Hazard_loss_pred_dat
+#Hazard_var_agg_mat
+gross_premium_CAT_norm_mat 
+```
 
 
 #### Reinsurance premium
@@ -4394,6 +4756,249 @@ for(s in 1:4){
 }
 ```
 
+### Premium module (stationary assumption)
+
+#### Gross premium (stationary)
+
+
+```{r Calculate expected inflation rates and CPI (under stationary assumption)}
+## Calculate inflation rates: ---------
+Inflation_rates_expected_stationary <- as.numeric(predict(inflation_mod_bench, n.ahead = forecast_horizon)$pred)
+
+## Calculate expected CPI: ----------
+CPI_expected_stationary <- c()
+CPI_expected_stationary[1] <- CPI_start
+    for(t in 2:(forecast_horizon+1)){
+        CPI_expected_stationary[t] <- CPI_expected_stationary[t-1]*(1 + Inflation_rates_expected_stationary[t-1])
+    }
+```
+
+```{r}
+#plot(Inflation_rates_expected_stationary, type = "l")
+```
+
+
+```{r Calculate the hazard risk premiums under the stationary setting}
+
+ ## Flood: ----------
+Flood_freq_stationary <- mean(predict(glm_Flood_freq_stationary, type ="response"))
+Flood_sev_mu_stationary <- mean(predict(glm_Flood_sev_stationary, type = "response", what = "mu"))
+Flood_sev_sigma_stationary <- mean(predict(glm_Flood_sev_stationary, type = "response", what = "sigma"))
+Flood_sev_stationary <- exp(Flood_sev_mu_stationary + 0.5*Flood_sev_sigma_stationary^2)
+Flood_loss_stationary  <- Flood_sev_stationary*Flood_freq_stationary
+#Flood_loss_pred_dat/Flood_loss_stationary
+
+## Bushfire: --------
+Bush_freq_stationary <- mean(predict(glm_Bush_freq_stationary, type ="response"))
+Bush_sev_mu_stationary <- mean(predict(glm_Bush_sev_stationary, type = "response", what = "mu"))
+Bush_sev_sigma_stationary <- mean(predict(glm_Bush_sev_stationary, type = "response", what = "sigma"))
+Bush_sev_stationary <- exp(Bush_sev_mu_stationary + 0.5*Bush_sev_sigma_stationary^2)
+Bush_loss_stationary  <- Bush_sev_stationary*Bush_freq_stationary
+## Check: 
+#Bushfire_loss_pred_dat/Bush_loss_stationary
+
+## Tropical cyclone: -------
+Cyc_freq_stationary <- mean(predict(glm_Cyc_freq_stationary, type ="response"))
+Cyc_sev_mu_stationary <- mean(predict(glm_Cyc_sev_stationary, type = "response", what = "mu"))
+Cyc_sev_sigma_stationary <- mean(predict(glm_Cyc_sev_stationary, type = "response", what = "sigma"))
+Cyc_sev_stationary <- exp(Cyc_sev_mu_stationary + 0.5*Cyc_sev_sigma_stationary^2)
+Cyc_loss_stationary  <- Cyc_sev_stationary*Cyc_freq_stationary
+## Check: 
+#TC_loss_pred_dat_yy/Cyc_loss_stationary
+
+## Storms: --------
+Storm_freq_stationary <- mean(predict(glm_Storm_freq_stationary, type ="response"))
+Storm_sev_mu_stationary <- mean(predict(glm_Storm_sev_stationary, type = "response", what = "mu"))
+Storm_sev_sigma_stationary <- mean(predict(glm_Storm_sev_stationary, type = "response", what = "sigma"))
+Storm_sev_stationary <- exp(Storm_sev_mu_stationary + 0.5*Storm_sev_sigma_stationary^2)
+Storm_loss_stationary  <- Storm_sev_stationary*Storm_freq_stationary
+## Check: 
+#Storm_loss_pred_dat_yy/Storm_loss_stationary
+
+## ECL: --------------
+
+ECL_freq_stationary <- mean(predict(glm_ECL_freq_stationary, type ="response"))
+ECL_sev_mu_stationary <- mean(predict(glm_ECL_sev_stationary, type = "response", what = "mu"))
+ECL_sev_sigma_stationary <- mean(predict(glm_ECL_sev_stationary, type = "response", what = "sigma"))
+ECL_sev_stationary <- exp(ECL_sev_mu_stationary + 0.5*ECL_sev_sigma_stationary^2)
+ECL_loss_stationary  <- ECL_sev_stationary*ECL_freq_stationary
+## Check: 
+#ECL_loss_pred_dat_yy/ECL_loss_stationary
+
+
+## Hailstorm:  --------------
+
+HS_freq_stationary <- mean(predict(glm_HS_freq_stationary, type ="response"))
+HS_sev_mu_stationary <- mean(predict(glm_HS_sev_stationary, type = "response", what = "mu"))
+HS_sev_sigma_stationary <- mean(predict(glm_HS_sev_stationary, type = "response", what = "sigma"))
+HS_sev_stationary <- exp(HS_sev_mu_stationary + 0.5*HS_sev_sigma_stationary^2)
+HS_loss_stationary  <- HS_sev_stationary*HS_freq_stationary
+## Check: 
+#HS_loss_pred_dat_yy/HS_loss_stationary
+
+## Calculate total risk premium:  --------------
+Hazard_loss_pred_stationary <- Flood_loss_stationary + Bush_loss_stationary + Cyc_loss_stationary + 
+    Storm_loss_stationary + ECL_loss_stationary + HS_loss_stationary
+# Check: 
+#Hazard_loss_pred_dat/Hazard_loss_pred_stationary
+```
+
+```{r Caclulate the hazard variance under the stationary setting}
+##Flood:
+Flood_var_stationary <- Flood_freq_stationary*exp(2*Flood_sev_mu_stationary + Flood_sev_sigma_stationary^2)*exp(Flood_sev_sigma_stationary^2)
+##Bush:
+Bush_var_stationary <- Bush_freq_stationary*exp(2*Bush_sev_mu_stationary + Bush_sev_sigma_stationary^2)*exp(Bush_sev_sigma_stationary^2)
+##Cyc:
+Cyc_var_stationary <- Cyc_freq_stationary*exp(2*Cyc_sev_mu_stationary + Cyc_sev_sigma_stationary^2)*exp(Cyc_sev_sigma_stationary^2)
+##Storm:
+Storm_var_stationary <- Storm_freq_stationary*exp(2*Storm_sev_mu_stationary + Storm_sev_sigma_stationary^2)*exp(Storm_sev_sigma_stationary^2)
+##ECL:
+ECL_var_stationary <- ECL_freq_stationary*exp(2*ECL_sev_mu_stationary + ECL_sev_sigma_stationary^2)*exp(ECL_sev_sigma_stationary^2)
+##HS:
+HS_var_stationary <- HS_freq_stationary*exp(2*HS_sev_mu_stationary + HS_sev_sigma_stationary^2)*exp(HS_sev_sigma_stationary^2)
+
+## Calculate the variance of total hazards: -------------
+
+Hazard_var_agg_stationary <- Flood_var_stationary + Bush_var_stationary + Cyc_var_stationary + Storm_var_stationary + ECL_var_stationary + HS_var_stationary
+
+## Check calculation of hazard variance: 
+#Hazard_var_agg_mat/Hazard_var_agg_stationary
+```
+
+```{r Derive the premiums under the stationary case}
+gross_premium_CAT_norm_stationary <- Hazard_loss_pred_stationary + risk_aversion_default*sqrt(Hazard_var_agg_stationary)
+
+gross_premium_CAT_nominal_stationary <- gross_premium_CAT_norm_stationary * CPI_expected_stationary[2:(forecast_horizon+1)]/CPI_start *GDP_forecasts_stationary/Real_GDP_start
+
+gross_premium_nominal_stationary <- gross_premium_CAT_nominal_stationary + E_nonCAT * (1 + CoV_nonCAT*risk_aversion_default) * Exposure_forecasts_stationary * (CPI_expected_stationary[2:(forecast_horizon+1)]/CPI_start)
+
+## Check: 
+#gross_premium_CAT_norm_mat/gross_premium_CAT_norm_stationary
+#gross_premium_nominal_mat / gross_premium_nominal_stationary
+```
+
+
+#### Reinsurance premiums (stationary)
+
+```{r Derive the weights allocated to different hazards under the stationary case}
+## Calculate aggregate frequency:----------
+aggr_freq_stationary <- Flood_freq_stationary + Bush_freq_stationary + Cyc_freq_stationary + 
+    Storm_freq_stationary + ECL_freq_stationary + HS_freq_stationary
+
+## Derive weights based on aggregate frequency: --------------
+Flood_weights_stationary <- Flood_freq_stationary/aggr_freq_stationary
+Bush_weights_stationary <- Bush_freq_stationary/aggr_freq_stationary
+Cyc_weights_stationary <- Cyc_freq_stationary/aggr_freq_stationary
+Storm_weights_stationary <- Storm_freq_stationary/aggr_freq_stationary
+ECL_weights_stationary <- ECL_freq_stationary/aggr_freq_stationary
+HS_weights_stationary <- HS_freq_stationary/aggr_freq_stationary
+## Total weights: ----------
+weights_freq_stationary_list <- c(Flood_weights_stationary, Bush_weights_stationary, Cyc_weights_stationary, Storm_weights_stationary, ECL_weights_stationary, HS_weights_stationary)
+## Store severity distribution parameters: --------
+mu_sev_stationary_list <- c(Flood_sev_mu_stationary, Bush_sev_mu_stationary, Cyc_sev_mu_stationary, Storm_sev_mu_stationary, ECL_sev_mu_stationary, HS_sev_mu_stationary)
+sigma_sev_stationary_list <- c(Flood_sev_sigma_stationary, Bush_sev_sigma_stationary, Cyc_sev_sigma_stationary, Storm_sev_sigma_stationary, ECL_sev_sigma_stationary, HS_sev_sigma_stationary)
+## Print out the parameters:
+data.frame(Hazards = c("Flood", "Bushfire", "Cyclones", "Storms", "East Coast Low", "Hail"), freq = weights_freq_stationary_list * aggr_freq_stationary, mu = mu_sev_stationary_list , sigma = sigma_sev_stationary_list)
+```
+
+
+
+```{r Write a function to calculate reinsurance premium under the stationary case}
+### Calculate aggregate distribution: -------------
+
+calc_aggr_dist_stationary <- function(excess, limit_re, length.discr = 1000, market_cap = 1, disc_method = "rounding", mu_list = mu_sev_stationary_list, sigma_list = sigma_sev_stationary_list, weights_freq_list = weights_freq_stationary_list, freq_total = aggr_freq_stationary){
+    ## Define other parameters:
+    limit <- excess + limit_re
+    stp <- ceiling(limit/length.discr)
+    loss_seq <- seq(from = 0, to = limit, by = stp)
+    l_index <- which(loss_seq >= excess)[1]
+    u_index <- which.max(loss_seq) 
+  
+    ##########  Derive the discretised CDF:########## 
+    fx_aggr_yy <- mixLN.discr.func(x, mu = mu_list + log(market_cap), sigma = sigma_list, weights = weights_freq_list, limit = limit, length = length.discr, method = disc_method)
+    
+    ########### Derive the aggregate distribution ########### 
+    Fs_aggr_yy <- aggregateDist(method = "recursive", model.freq = "poisson",
+      lambda = freq_total, model.sev = fx_aggr_yy, x.scale = stp, maxit = length.discr)
+    fs_aggr_yy <- diff(Fs_aggr_yy)
+    ########## Derive the truncated likelihood ########### 
+    Fs_u <- cumsum(fs_aggr_yy)[u_index]
+    Fs_l <- cumsum(fs_aggr_yy)[l_index]
+    ## Derive the left-truncated and right-censored density and CDF: 
+    fs_tc_aggr_yy <- fs_aggr_yy/(Fs_u - Fs_l) * ifelse((1:length(loss_seq)) >= l_index, 1, 0) * ifelse((1:length(loss_seq)) <= u_index, 1, 0)
+    Fs_tc_aggr_yy <- (cumsum(fs_aggr_yy) - Fs_l)/(Fs_u - Fs_l) * ifelse((1:length(loss_seq)) >= l_index, 1, 0) * ifelse((1:length(loss_seq)) <= u_index, 1, 0) + 1 * ifelse((1:length(loss_seq)) > u_index, 1, 0)
+    ## Calculate the expected value of reinsurance payments:
+    # Evaluate 1 - F(s) at each s: 
+    #Fs_disc <- 1 - Fs_tc_aggr_yy[l_index:u_index]
+    Fs_disc <- 1 - cumsum(fs_aggr_yy)[l_index:u_index]
+    Fs_full <- 1 - cumsum(fs_aggr_yy)
+    #fs_disc <- fs_tc_aggr_yy[l_index:u_index]
+    Re_loss_seq <- loss_seq[l_index:u_index]-excess
+    n <- length(Fs_disc)
+    # Apply the trapezoidal rule to derive the integral: 
+    Es_tc <- stp * (0.5 * Fs_disc[1] + sum(Fs_disc[2:(n-1)]) + 0.5 * Fs_disc[n])
+    #Es_tc <- stp * (0.5 * Fs_disc[1] + sum(Fs_disc[2:(n-1)]) + 0.5 * Fs_disc[n]) + limit * (1 - Fs_disc[n])
+    #Es_tc <- stp * (sum(Fs_disc))
+    Es_tc2 <- 2 * stp * (0.5 * Re_loss_seq[1] * Fs_disc[1] + sum(Re_loss_seq[2:(n-1)]*Fs_disc[2:(n-1)]) + 0.5*Re_loss_seq[n]*Fs_disc[n])
+    Var_tc <- Es_tc2 - Es_tc^2
+    
+return(list(fs_aggr = fs_aggr_yy, fs_aggr_trunc = fs_tc_aggr_yy, Fs_aggr_trunc = Fs_tc_aggr_yy, Es_aggr_trunc = Es_tc, Var_aggr_trunc = Var_tc))
+}
+
+## Calculate reinsurance premiums: ---------------------
+
+calc_re_premium_stationary <- function(excess_list, limit_re_list, market_cap = 1){
+      aggr_dist <- calc_aggr_dist_stationary(excess = excess_list, limit_re = limit_re_list, market_cap = market_cap, length.discr = 1000, disc_method = "rounding")
+        # Calculated the expected reinsurance loss:
+        E_Re_aggr <- aggr_dist$Es_aggr_trunc
+        Var_Re_aggr <-aggr_dist$Var_aggr_trunc
+return(list(Es_aggr_trunc = E_Re_aggr, Var_aggr_trunc = Var_Re_aggr))
+}
+```
+
+
+
+```{r Calculate the reinsurance premiums under the stationary case}
+
+re_premium_calcs_L_stationary <- calc_re_premium_stationary(excess_list = excess_default_Large, limit_re_list = limit_default_large, market_cap = market_share_input[market_share_input$Company == "Large", ]$Market_shares)
+    
+re_premium_calcs_M_stationary <- calc_re_premium_stationary(excess_list = excess_default_Medium, limit_re_list = limit_default_Medium, market_cap = market_share_input[market_share_input$Company == "Medium", ]$Market_shares)
+    
+re_premium_calcs_S_stationary <- calc_re_premium_stationary(excess_list = excess_default_Small, limit_re_list = limit_default_Small, market_cap = market_share_input[market_share_input$Company == "Small", ]$Market_shares)
+    
+    ### Calculate the total reinsurance premiums: 
+    #### Note: we cap the reinsurance at the limit level; this is because if reinsurance premiums are greater than the limit, the insurers will have no incentive to purchase reinsurance. 
+    re_premium_L_stationary <- pmin(re_premium_calcs_L_stationary$Es_aggr_trunc + risk_aversion_default * sqrt(re_premium_calcs_L_stationary$Var_aggr_trunc), limit_default_large)
+    re_premium_M_stationary <- pmin(re_premium_calcs_M_stationary$Es_aggr_trunc + risk_aversion_default * sqrt(re_premium_calcs_M_stationary$Var_aggr_trunc), limit_default_Medium)
+    re_premium_S_stationary <- pmin(re_premium_calcs_S_stationary$Es_aggr_trunc + risk_aversion_default * sqrt(re_premium_calcs_S_stationary$Var_aggr_trunc), limit_default_Small)
+    
+    re_premium_L_stationary_base <- re_premium_calcs_L_stationary$Es_aggr_trunc
+    re_premium_M_stationary_base <- re_premium_calcs_M_stationary$Es_aggr_trunc 
+    re_premium_S_stationary_base <- re_premium_calcs_S_stationary$Es_aggr_trunc
+    
+    ### Derive the total market reinsurance premium:
+    reinsurance_premium_market_stationary <- re_premium_L_stationary*market_share_input[market_share_input$Company == "Large", ]$Numbers + re_premium_M_stationary*market_share_input[market_share_input$Company == "Medium", ]$Numbers + re_premium_S_stationary * market_share_input[market_share_input$Company == "Small", ]$Numbers
+    
+    reinsurance_premium_market_stationary_base <- re_premium_L_stationary_base*market_share_input[market_share_input$Company == "Large", ]$Numbers + re_premium_M_stationary_base*market_share_input[market_share_input$Company == "Medium", ]$Numbers + re_premium_S_stationary_base * market_share_input[market_share_input$Company == "Small", ]$Numbers
+
+### Check reinsurance premium calculations: 
+reinsurance_premium_multipliers <- reinsurance_premium_market_all_scenarios/reinsurance_premium_market_stationary
+plot(x = 2023:(2023 + forecast_horizon - 1), y = reinsurance_premium_multipliers[, 1], type = "l", col = col_list[1], lwd = 2, ylim = c(1, 7), xlab = "Years", ylab = "Multipliers", main = "Ratios of reinsurance premiums projected to stationary case")
+for(s in 2:4){
+    points(x = 2023:(2023 + forecast_horizon - 1), y = reinsurance_premium_multipliers[, s], type = "l", col = col_list[s], lwd = 2)
+}
+legend("topleft", legend = scenario_list, col = col_list, lty = 1, lwd = 2)
+```
+
+
+```{r}
+re_premium_calcs_L_stationary$Es_aggr_trunc
+sqrt(re_premium_calcs_L_stationary$Var_aggr_trunc)
+risk_aversion_default * sqrt(re_premium_calcs_L_stationary$Var_aggr_trunc)
+```
+
+
+
 
 
 ### Surplus module
@@ -4521,6 +5126,8 @@ barplot(init_capital_L/1e9, names.arg = scenario_list, main = "Initial capital (
 barplot(init_capital_M/1e9, names.arg = scenario_list, main = "Initial capital (Medium)", ylab = "Capital (Billions)")
 barplot(init_capital_S/1e9, names.arg = scenario_list, main = "Initial capital (Small)", ylab = "Capital (Billions)")
 ```
+
+
 
 
 
@@ -4661,6 +5268,8 @@ for(s in 1:4){
     premium_re_all_scanarios_base_nominal_mat[, s] <-  capitalPremiums_sims_list_L_cycle[[s]]$Premiums_Re_Unadj*market_share_input[market_share_input$Company == "Large", ]$Numbers + capitalPremiums_sims_list_M_cycle[[s]]$Premiums_Re_Unadj*market_share_input[market_share_input$Company == "Medium", ]$Numbers + capitalPremiums_sims_list_S_cycle[[s]]$Premiums_Re_Unadj*market_share_input[market_share_input$Company == "Small", ]$Numbers
 } 
 ```
+
+
 
 
 Adjust the surplus simulations to satisfy the capital constraint:
@@ -4805,10 +5414,589 @@ for(s in 1:4){
 
 
 
+### Surplus module  (stationary)
+
+```{r Write a function to simulate surplus under the stationary case}
+calc_surplus_func_full_cycle_stationary <- function(Risk_free_weight, 
+                              market_cap,
+                              reinsurance_excess,
+                              reinsurance_limit_multiple, 
+                              rates_constrain = FALSE,
+                              Loading_cap = NULL, 
+                              rates_stability = FALSE,
+                              stability_cap = NULL,
+                              Re_rates_constrain = FALSE, 
+                              Loading_cap_Re = NULL,
+                              S_init, 
+                              S_init_norm, 
+                              Expected_Non_CAT_Loss,
+                              dispersion_nonCAT,
+                              Expected_Non_CAT_Loss_other, 
+                              dispersion_nonCAT_other,
+                              Exposure_pred_other_full, 
+                              Power_Non_CAT_loss, 
+                              Expected_CAT_Loss,
+                              Var_CAT_loss, 
+                              risk_aversion, 
+                              CPI_pred, CPI_start = CPI_start, 
+                              GDP_pred, GDP_start = Real_GDP_start, 
+                              Exposure_start_market = Exposure_start, 
+                              mu_equity = mu_TR_stationary, 
+                              sigma_equity = sigma_TR_stationary,
+                              Exposure_pred,
+                              simulation_DFA_list_all, 
+                              n.sims, 
+                              horizon,
+                              k1_param = k1_default,
+                              S0_param = S_ref_default,
+                              k3_param = k3_default, 
+                              assumption_alternative = FALSE, Div_payout = 0, solvency_ratio_steady = 1, Div_limit = 0.5){
+    
+     ## Obtain the CPI and GDP corresponding to each scenario:
+     CPI_pred <- CPI_pred[1:horizon]
+     GDP_pred <- GDP_pred[1:horizon]
+     Exposure_pred <- Exposure_pred[1:horizon]*market_cap
+     Exposure_pred_other <- Exposure_pred_other_full[1:horizon]*market_cap
+     Exposure_start <- Exposure_start_market * market_cap
+    
+     ## Calculate the gross premium:
+     Premium_loading <- (sqrt(Var_CAT_loss[1:horizon])/Expected_CAT_Loss[1:horizon])*risk_aversion
+     Var_nonCAT <- dispersion_nonCAT*Expected_Non_CAT_Loss^Power_Non_CAT_loss
+     CoV_nonCAT <- sqrt(Var_nonCAT)/Expected_Non_CAT_Loss
+     Premium_nonCAT_loading <- CoV_nonCAT*risk_aversion
+     
+     Var_nonCAT_other <- dispersion_nonCAT_other*Expected_Non_CAT_Loss_other^Power_Non_CAT_loss
+     CoV_nonCAT_other <- sqrt(Var_nonCAT_other)/Expected_Non_CAT_Loss_other
+     Premium_nonCAT_other_loading <- CoV_nonCAT_other*risk_aversion
+     
+     Premium_loading_adjusted <- if(rates_constrain == FALSE){
+         Premium_loading
+     } else{pmin(Premium_loading, Loading_cap)}
+     Premium_gross_CAT_norm_raw <- (1 +  Premium_loading_adjusted)*(Expected_CAT_Loss[1:horizon])
+     
+     Premium_gross_CAT_norm <- if(rates_stability == FALSE){
+        Premium_gross_CAT_norm_raw
+    } else{
+        Premium_gross_CAT_norm_adj <- c()
+        Premium_gross_CAT_norm_adj[1] <- Premium_gross_CAT_norm_raw[1]
+        for(p in 2:length(Premium_gross_CAT_norm_raw)){
+            rates_rise <- Premium_gross_CAT_norm_raw[p]/Premium_gross_CAT_norm_adj[p-1] - 1
+            Premium_gross_CAT_norm_adj[p] <- Premium_gross_CAT_norm_adj[p-1]*(1 + min(rates_rise, stability_cap))
+        }
+        Premium_gross_CAT_norm_adj
+    }
+
+     Premium_gross_CAT <- market_cap*Premium_gross_CAT_norm*(CPI_pred/CPI_start)*(GDP_pred/GDP_start)
+     Premium_gross_Non_CAT <- Expected_Non_CAT_Loss*(1 + Premium_nonCAT_loading)*(CPI_pred/CPI_start)*Exposure_pred
+     Premium_gross_Non_CAT_norm <- Expected_Non_CAT_Loss*(1 + Premium_nonCAT_loading)*Exposure_start
+     
+      ## Also derive the non-CAT: other premiums:
+     Premium_gross_Non_CAT_other <- Expected_Non_CAT_Loss_other*(1 + Premium_nonCAT_other_loading)*(CPI_pred/CPI_start)*Exposure_pred_other
+     Premium_gross_Non_CAT_other_norm <- Expected_Non_CAT_Loss_other*(1 + Premium_nonCAT_other_loading)*Exposure_pred_other
+     
+     
+     ## Calculate the reinsurance premium: 
+     ### Adjust the reinsurance excess and limit:
+     reinsurance_excess_adj <- reinsurance_excess*(CPI_pred/CPI_start)*(GDP_pred/GDP_start)
+     Limit_adj <- reinsurance_excess_adj * reinsurance_limit_multiple
+     Limit <- reinsurance_excess*reinsurance_limit_multiple
+     ### Calculate the reinsurance premium using Panjer's recursion: 
+     Re_loss_CAT <- calc_re_premium_stationary(excess_list = reinsurance_excess, limit_re_list = reinsurance_excess*reinsurance_limit_multiple, market_cap = market_cap)
+     
+     Re_premium_loading <- risk_aversion * sqrt(Re_loss_CAT$Var_aggr_trunc)/Re_loss_CAT$Es_aggr_trunc
+     Re_premium_loading_adj <- if(Re_rates_constrain == FALSE){
+         Re_premium_loading
+     } else{pmin(Re_premium_loading, Loading_cap_Re)}
+    
+     Re_premium_CAT_base <- Re_loss_CAT$Es_aggr_trunc *(CPI_pred/CPI_start) * (GDP_pred/GDP_start)
+     Re_premium_CAT <- Re_loss_CAT$Es_aggr_trunc * (1 + Re_premium_loading_adj) *(CPI_pred/CPI_start) * (GDP_pred/GDP_start)
+     Re_premium_CAT_norm <- Re_loss_CAT$Es_aggr_trunc * (1 + Re_premium_loading_adj)
+     simulation_DFA_list <- simulation_DFA_list_all
+     ## Define a empty matrices to store the capital level and underwriting loss: 
+     Capital_sims <- matrix(NA, nrow = length(CPI_pred), ncol = n.sims)
+     Re_Capital_sims <- matrix(NA, nrow = length(CPI_pred), ncol = n.sims)
+     #Capital_sims_normalised <- matrix(NA, nrow = length(CPI_pred), ncol = n.sims)
+     UL_results <- c()
+     Premium_net_sims <- matrix(NA, nrow = length(CPI_pred), ncol = n.sims)
+     Premium_re_sims <- matrix(NA, nrow = length(CPI_pred), ncol = n.sims)
+     sol_ratios_sims <- matrix(NA, nrow = length(CPI_pred) + 1, ncol = n.sims)
+     capital_loading_sims <-  matrix(NA, nrow = length(CPI_pred) + 1, ncol = n.sims)
+     
+     Claims_cost_list <- c()
+     Investment_returns_list <- c()
+     #UL_results_norm <- c()
+     for(i in 1:n.sims){
+     
+     ################ Calculate the claims cost ################ ################ 
+     ## Get the non-catastrophe losses
+     Non_CAT_losses_withInflation <- simulation_DFA_list$Liabilities_module$Non_CAT_loss_nominal[1:horizon, i]*market_cap
+     Non_CAT_losses_withInflation_other <- simulation_DFA_list$Liabilities_module$Non_CAT_other_loss_nominal[1:horizon, i]*market_cap
+     Non_CAT_losses_norm <- simulation_DFA_list$Liabilities_module$Non_CAT_loss[1:horizon, i]*Exposure_start/Exposure_pred*market_cap
+      Non_CAT_losses_norm_other <- simulation_DFA_list$Liabilities_module$Non_CAT_other_loss[1:horizon, i]*market_cap
+     ## Get the gross CAT losses:
+     CAT_losses_gross <- simulation_DFA_list$Liabilities_module$CAT_nominal_loss[1:horizon, i]*market_cap
+     CAT_losses_gross_norm <- simulation_DFA_list$Liabilities_module$CAT_normalised_loss[1:horizon, i]*market_cap
+     
+     ## Get the net CAT losses:
+     CAT_losses_net <- CAT_losses_gross-pmax(pmin(CAT_losses_gross-reinsurance_excess_adj, Limit_adj), 0)
+     CAT_losses_net_norm <- CAT_losses_gross_norm - pmax(pmin(CAT_losses_gross_norm - reinsurance_excess, Limit), 0)
+     
+     ## Get the reinsurance loss:
+     Re_CAT_loss <- pmax(pmin(CAT_losses_gross-reinsurance_excess_adj, Limit_adj), 0)
+     
+     ## Get the total claims cost:
+     claims_cost_total <- Non_CAT_losses_withInflation + CAT_losses_net + Non_CAT_losses_withInflation_other
+     claims_cost_total_norm <- Non_CAT_losses_norm + CAT_losses_net_norm + Non_CAT_losses_norm_other
+     
+     ################ Calculate the investment return ################ ################
+     ## Get the norminal risk-free rates:
+     Short_rates_nominal <-  simulation_DFA_list$MEV_module$Nominal_rates[1:horizon, i]
+     Short_rates_real <- simulation_DFA_list$MEV_module$Real_rates[1:horizon, i]
+     
+     ## Get the excess equity return:
+     equity_return_excess <- rnorm(horizon, mean = mu_equity, sd = sigma_equity)
+     #### Get the nominal equity return: 
+     equity_return <- pmax(equity_return_excess + Short_rates_nominal, -1)
+     equity_return_real <- pmax(equity_return_excess + Short_rates_real, -1)
+     ## Get the total return
+     investment_return <- Risk_free_weight*Short_rates_nominal + (1-Risk_free_weight)*equity_return 
+     investment_return_real <- Risk_free_weight*Short_rates_real + (1-Risk_free_weight)*equity_return_real
+     
+     ### Calculate the simulated surpluses ####:
+     capital_projections <- c()
+     capital_projections[1] <- S_init
+     
+     re_capital_projections <- c()
+     re_capital_projections[1] <- S0_param * Re_premium_CAT[1]
+      
+     re_premium_projections <- c()
+     re_premium_projections[1] <- Re_premium_CAT[1]
+     
+     Premium_net <- c()
+     Premium_net[1] <- Premium_gross_CAT[1] + Premium_gross_Non_CAT[1] + Premium_gross_Non_CAT_other[1] - Re_premium_CAT[1]
+     capital_loading <- c()
+     
+     sol_ratios <- c()
+     for(k in 2:(length(Premium_gross_CAT)+1)){
+         S_prev_Re <- if(re_capital_projections[k-1] <= 0){0}else{re_capital_projections[k-1]/(re_premium_projections[k-1])}
+         P_re_sim <- premium_S_func_alt(P_ref = Re_premium_CAT[k -1], S_prev = S_prev_Re, S_ref = S0_param, k1 = k1_param, floor_param = Re_premium_CAT[k - 1])
+         ## Calculate the net premium:
+         P_gross <- Premium_gross_CAT[k-1] + Premium_gross_Non_CAT[k-1] + Premium_gross_Non_CAT_other[k-1]
+         P_net <- Premium_gross_CAT[k-1] + Premium_gross_Non_CAT[k-1] + Premium_gross_Non_CAT_other[k-1] - P_re_sim
+         ## Calculate the dividend payout from primary insurers:
+         capital_exDiv <- (capital_projections[k-1] + P_net)*(1 + investment_return[k-1]) - claims_cost_total[k-1]
+         net_profit <- capital_exDiv - capital_projections[k-1]
+         Div <- max(min(net_profit * Div_limit, dividends_payout_func(K_exDiv = capital_exDiv, P_t = P_gross, S_0 = solvency_ratio_steady, k3 = Div_payout)), 0)
+         ## Calculate the dividend payout from reinsurers:
+         Re_capital_exDiv <- (re_capital_projections[k-1] + P_re_sim)*(1 + investment_return[k-1]) -  Re_CAT_loss[k-1]
+         Div_rev <- dividends_payout_func(K_exDiv = Re_capital_exDiv, P_t = P_re_sim, S_0 = S0_param, k3 = k3_param)
+         ## Calculate the reinsurance capital:
+         re_capital_projections[k] <- ifelse(re_capital_projections[k - 1] <= 0, 0, Re_capital_exDiv - Div_rev)
+         ## Calculate the insurer capital:
+         capital_projections[k] <- ifelse(capital_projections[k-1] <= 0, 0, capital_exDiv - Div)
+         ## Assign the net premium:
+         Premium_net[k] <- P_net
+         ## Assign the reinsurance premium: 
+         re_premium_projections[k] <- P_re_sim
+         ## Assign the solvency ratio:
+         sol_ratios[k] <- S_prev_Re
+         capital_loading[k] <- P_re_sim/Re_premium_CAT[k -1] - 1
+     }
+     Capital_sims[, i] <- capital_projections[2:(length(Premium_gross_CAT)+1)]
+     UL_results[i] <- claims_cost_total[1]/(1 + investment_return[1]) - Premium_net[1]
+     Premium_net_sims[, i] <- Premium_net[2:(length(Premium_gross_CAT)+1)]
+     Premium_re_sims[, i] <- re_premium_projections[2:(length(Premium_gross_CAT)+1)]
+     Re_Capital_sims[, i] <- re_capital_projections[2:(length(Premium_gross_CAT)+1)]
+     sol_ratios_sims[, i] <- sol_ratios
+     
+     Claims_cost_list[i] <- claims_cost_total[1]
+     Investment_returns_list[i] <- investment_return[1]
+     capital_loading_sims[, i] <- capital_loading
+     
+    }
+return(list(Capital_sims = Capital_sims, Premiums = Premium_net_sims, Premiums_Re = Premium_re_sims, Capital_sims_re = Re_Capital_sims, Premiums_Re_Unadj = Re_premium_CAT, Underwriting_Loss_sims = UL_results, Sol_ratios = sol_ratios_sims, capital_loading = capital_loading_sims))
+}
+```
+
+
+
+
+<!-- ```{r Derive initial capital level under the stationary case, warning=FALSE} -->
+<!--     ################################################# -->
+<!--     ## Initial capital requirement for large size: ------------------------------- -->
+<!--     ################################################# -->
+<!--     UL_sims_Large_stationary <- calc_surplus_func_full_cycle_stationary(Risk_free_weight = Risk_free_weight_default,  -->
+<!--                                   market_cap = market_share_input[market_share_input$Company == "Large", ]$Market_shares, -->
+<!--                                   reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Excess, -->
+<!--                                   reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Excess,  -->
+<!--                                   S_init = 0,  -->
+<!--                                   S_init_norm = 0, -->
+<!--                                   Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")), -->
+<!--                                   dispersion_nonCAT = dispersion_nonCAT, -->
+<!--                                   Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")),  -->
+<!--                                   dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion), -->
+<!--                                   Exposure_pred_other_full = Exposure_forecasts_other,  -->
+<!--                                   Power_Non_CAT_loss = power_tw,  -->
+<!--                                   Expected_CAT_Loss = rep(Hazard_loss_pred_stationary, forecast_horizon), -->
+<!--                                   Var_CAT_loss = rep(Hazard_var_agg_stationary, forecast_horizon),  -->
+<!--                                   risk_aversion = risk_aversion_default,  -->
+<!--                                   CPI_pred = CPI_expected_stationary, CPI_start = CPI_start,  -->
+<!--                                   GDP_pred = GDP_forecasts_stationary, GDP_start = Real_GDP_start,  -->
+<!--                                   Exposure_pred = Exposure_forecasts_stationary, -->
+<!--                                   Exposure_start = Exposure_start, -->
+<!--                                   simulation_DFA_list_all = DFA_components_stationary, -->
+<!--                                   n.sims = n.sims,  -->
+<!--                                   horizon = 2, -->
+<!--                                   assumption_alternative = FALSE) -->
+
+<!--     ################################################# -->
+<!--     ## Initial capital requirement for medium size: ------------------------------- -->
+<!--     ################################################# -->
+
+<!--   UL_sims_Medium_stationary <- calc_surplus_func_full_cycle_stationary(Risk_free_weight = Risk_free_weight_default,  -->
+<!--                                   market_cap = market_share_input[market_share_input$Company == "Medium", ]$Market_shares, -->
+<!--                                   reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Excess, -->
+<!--                                   reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Excess,  -->
+<!--                                   S_init = 0,  -->
+<!--                                   S_init_norm = 0, -->
+<!--                                   Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")), -->
+<!--                                   dispersion_nonCAT = dispersion_nonCAT, -->
+<!--                                   Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")),  -->
+<!--                                   dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion), -->
+<!--                                   Exposure_pred_other_full = Exposure_forecasts_other,  -->
+<!--                                   Power_Non_CAT_loss = power_tw,  -->
+<!--                                   Expected_CAT_Loss = rep(Hazard_loss_pred_stationary, forecast_horizon), -->
+<!--                                   Var_CAT_loss = rep(Hazard_var_agg_stationary, forecast_horizon),  -->
+<!--                                   risk_aversion = risk_aversion_default,  -->
+<!--                                   CPI_pred = CPI_expected_stationary, CPI_start = CPI_start,  -->
+<!--                                   GDP_pred = GDP_forecasts_stationary, GDP_start = Real_GDP_start,  -->
+<!--                                   Exposure_pred = Exposure_forecasts_stationary, -->
+<!--                                   Exposure_start = Exposure_start, -->
+<!--                                   simulation_DFA_list_all = DFA_components_stationary, -->
+<!--                                   n.sims = n.sims,  -->
+<!--                                   horizon = 2, -->
+<!--                                   assumption_alternative = FALSE) -->
+
+
+<!--     ################################################# -->
+<!--     ## Initial capital requirement for Small size: ------------------------------- -->
+<!--     ################################################# -->
+<!--      UL_sims_Small_stationary <- calc_surplus_func_full_cycle_stationary(Risk_free_weight = Risk_free_weight_default,  -->
+<!--                                   market_cap = market_share_input[market_share_input$Company == "Small", ]$Market_shares, -->
+<!--                                   reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Excess, -->
+<!--                                   reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Excess,  -->
+<!--                                   S_init = 0,  -->
+<!--                                   S_init_norm = 0, -->
+<!--                                   Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")), -->
+<!--                                   dispersion_nonCAT = dispersion_nonCAT, -->
+<!--                                   Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")),  -->
+<!--                                   dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion), -->
+<!--                                   Exposure_pred_other_full = Exposure_forecasts_other,  -->
+<!--                                   Power_Non_CAT_loss = power_tw,  -->
+<!--                                   Expected_CAT_Loss = rep(Hazard_loss_pred_stationary, forecast_horizon), -->
+<!--                                   Var_CAT_loss = rep(Hazard_var_agg_stationary, forecast_horizon),  -->
+<!--                                   risk_aversion = risk_aversion_default,  -->
+<!--                                   CPI_pred = CPI_expected_stationary, CPI_start = CPI_start,  -->
+<!--                                   GDP_pred = GDP_forecasts_stationary, GDP_start = Real_GDP_start,  -->
+<!--                                   Exposure_pred = Exposure_forecasts_stationary, -->
+<!--                                   Exposure_start = Exposure_start, -->
+<!--                                   simulation_DFA_list_all = DFA_components_stationary, -->
+<!--                                   n.sims = n.sims,  -->
+<!--                                   horizon = 2, -->
+<!--                                   assumption_alternative = FALSE) -->
+<!-- ## Calculate the initial capital requirements at the 99.5th quantile times the PCA multiple: :  -->
+<!-- init_capital_L_stationary <- quantile(UL_sims_Large_stationary$Underwriting_Loss_sims, 0.995) * PCA_multiple_mean -->
+<!-- init_capital_M_stationary <- quantile(UL_sims_Medium_stationary$Underwriting_Loss_sims, 0.995) * PCA_multiple_mean -->
+<!-- init_capital_S_stationary <- quantile(UL_sims_Small_stationary$Underwriting_Loss_sims, 0.995) * PCA_multiple_mean -->
+<!-- ``` -->
+
+```{r Set initial capital to be the average of starting capital in the non-stationary case}
+init_capital_L_stationary <- mean(init_capital_L)
+init_capital_M_stationary <- mean(init_capital_M)
+init_capital_S_stationary <- mean(init_capital_S)
+```
+
+
+
+
+
+```{r Plot of intial capital levels with excess and limit considered}
+## Plot nominal capital levels:
+hist(UL_sims_Large_stationary$Underwriting_Loss_sims/1e9, breaks = 100, xlab = "Underwriting loss ($Bn)", main = "Underwriting loss (first year) and initial capital (Stationary): Large")
+abline(v = init_capital_L_stationary/1e9, lty = 2, col = "red")
+
+hist(UL_sims_Medium_stationary$Underwriting_Loss_sims/1e9, breaks = 100, xlab = "Underwriting loss ($Bn)", main = "Underwriting loss (first year) and initial capital (Stationary): Medium")
+abline(v = init_capital_M_stationary/1e9, lty = 2, col = "red")
+
+hist(UL_sims_Small_stationary$Underwriting_Loss_sims/1e9, breaks = 100, xlab = "Underwriting loss ($Bn)", main = "Underwriting loss (first year) and initial capital (Stationary): Small")
+abline(v = init_capital_S_stationary/1e9, lty = 2, col = "red")
+
+## Compare with initial capital level under climate change scenarios: 
+par(mfrow = c(1, 3))
+## Plot nominal capital levels:
+barplot(c(init_capital_L_stationary, init_capital_L)/1e9, names.arg = c("Stationary", scenario_list), main = "Initial capital (Large)", ylab = "Capital (Billions)")
+barplot(c(init_capital_M_stationary, init_capital_M)/1e9, names.arg = c("Stationary", scenario_list), main = "Initial capital (Medium)", ylab = "Capital (Billions)")
+barplot(c(init_capital_S_stationary, init_capital_S)/1e9, names.arg = c("Stationary", scenario_list), main = "Initial capital (Small)", ylab = "Capital (Billions)")
+
+```
+
+```{r Derive the capital simulations for the whole forecasting period under the stationary case, warning=FALSE}
+#################################################
+    ## Initial capital requirement for large size: -------------------------------
+    #################################################
+    capitalPremiums_sims_list_L_cycle_stationary <- calc_surplus_func_full_cycle_stationary(Risk_free_weight = Risk_free_weight_default, 
+                                  market_cap = market_share_input[market_share_input$Company == "Large", ]$Market_shares,
+                                  reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Excess,
+                                  reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Large", ]$Aggregate_Excess, 
+                                  S_init = init_capital_L_stationary, 
+                                  S_init_norm = init_capital_L_stationary,
+                                  Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")),
+                                  dispersion_nonCAT = dispersion_nonCAT,
+                                  Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")), 
+                                  dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion),
+                                  Exposure_pred_other_full = Exposure_forecasts_other, 
+                                  Power_Non_CAT_loss = power_tw, 
+                                  Expected_CAT_Loss = rep(Hazard_loss_pred_stationary, forecast_horizon),
+                                  Var_CAT_loss = rep(Hazard_var_agg_stationary, forecast_horizon), 
+                                  risk_aversion = risk_aversion_default, 
+                                  CPI_pred = CPI_expected_stationary, CPI_start = CPI_start, 
+                                  GDP_pred = GDP_forecasts_stationary, GDP_start = Real_GDP_start, 
+                                  Exposure_pred = Exposure_forecasts_stationary,
+                                  Exposure_start = Exposure_start,
+                                  simulation_DFA_list_all = DFA_components_stationary,
+                                  n.sims = n.sims, 
+                                  horizon = forecast_horizon,
+                                  assumption_alternative = FALSE)
+
+    #################################################
+    ## Initial capital requirement for medium size: -------------------------------
+    #################################################
+
+  capitalPremiums_sims_list_M_cycle_stationary <- calc_surplus_func_full_cycle_stationary(Risk_free_weight = Risk_free_weight_default, 
+                                  market_cap = market_share_input[market_share_input$Company == "Medium", ]$Market_shares,
+                                  reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Excess,
+                                  reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Medium", ]$Aggregate_Excess, 
+                                  S_init = init_capital_M_stationary, 
+                                  S_init_norm = init_capital_M_stationary,
+                                  Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")),
+                                  dispersion_nonCAT = dispersion_nonCAT,
+                                  Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")), 
+                                  dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion),
+                                  Exposure_pred_other_full = Exposure_forecasts_other, 
+                                  Power_Non_CAT_loss = power_tw, 
+                                  Expected_CAT_Loss = rep(Hazard_loss_pred_stationary, forecast_horizon),
+                                  Var_CAT_loss = rep(Hazard_var_agg_stationary, forecast_horizon), 
+                                  risk_aversion = risk_aversion_default, 
+                                  CPI_pred = CPI_expected_stationary, CPI_start = CPI_start, 
+                                  GDP_pred = GDP_forecasts_stationary, GDP_start = Real_GDP_start, 
+                                  Exposure_pred = Exposure_forecasts_stationary,
+                                  Exposure_start = Exposure_start,
+                                  simulation_DFA_list_all = DFA_components_stationary,
+                                  n.sims = n.sims, 
+                                  horizon = forecast_horizon,
+                                  assumption_alternative = FALSE)
+
+
+    #################################################
+    ## Initial capital requirement for Small size: -------------------------------
+    #################################################
+     capitalPremiums_sims_list_S_cycle_stationary <- calc_surplus_func_full_cycle_stationary(Risk_free_weight = Risk_free_weight_default, 
+                                  market_cap = market_share_input[market_share_input$Company == "Small", ]$Market_shares,
+                                  reinsurance_excess = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Excess,
+                                  reinsurance_limit_multiple = Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Limit/Reinsurance_structure_input[Reinsurance_structure_input$Size == "Small", ]$Aggregate_Excess, 
+                                  S_init = init_capital_S_stationary, 
+                                  S_init_norm = init_capital_S_stationary,
+                                  Expected_Non_CAT_Loss = mean(predict(model_nonCAT, type = "response")),
+                                  dispersion_nonCAT = dispersion_nonCAT,
+                                  Expected_Non_CAT_Loss_other = mean(predict(model_nonCAT_other, type = "response")), 
+                                  dispersion_nonCAT_other = as.numeric(summary(model_nonCAT_other)$dispersion),
+                                  Exposure_pred_other_full = Exposure_forecasts_other, 
+                                  Power_Non_CAT_loss = power_tw, 
+                                  Expected_CAT_Loss = rep(Hazard_loss_pred_stationary, forecast_horizon),
+                                  Var_CAT_loss = rep(Hazard_var_agg_stationary, forecast_horizon), 
+                                  risk_aversion = risk_aversion_default, 
+                                  CPI_pred = CPI_expected_stationary, CPI_start = CPI_start, 
+                                  GDP_pred = GDP_forecasts_stationary, GDP_start = Real_GDP_start, 
+                                  Exposure_pred = Exposure_forecasts_stationary,
+                                  Exposure_start = Exposure_start,
+                                  simulation_DFA_list_all = DFA_components_stationary,
+                                  n.sims = n.sims, 
+                                  horizon = forecast_horizon,
+                                  assumption_alternative = FALSE)
+```
+
+
+
+
+Based on the capital simulations results for different sizes of insurers, derive the market surplus level:
+
+
+
+```{r Calculate the capital results with reinsurance cycle considered under stationary case}
+    ## Calculate the market surplus:
+    capital_sims_list_Market_cycle_stationary <- capitalPremiums_sims_list_L_cycle_stationary$Capital_sims*market_share_input[market_share_input$Company == "Large", ]$Numbers + capitalPremiums_sims_list_M_cycle_stationary$Capital_sims*market_share_input[market_share_input$Company == "Medium", ]$Numbers + capitalPremiums_sims_list_S_cycle_stationary$Capital_sims*market_share_input[market_share_input$Company == "Small", ]$Numbers
+    ## Calculate the reinsurance capital: 
+    capital_re_sims_list_Market_cycle_stationary <- capitalPremiums_sims_list_L_cycle_stationary$Capital_sims_re*market_share_input[market_share_input$Company == "Large", ]$Numbers + capitalPremiums_sims_list_M_cycle_stationary$Capital_sims_re*market_share_input[market_share_input$Company == "Medium", ]$Numbers + capitalPremiums_sims_list_S_cycle_stationary$Capital_sims_re*market_share_input[market_share_input$Company == "Small", ]$Numbers
+    ## Calculate the reinsurance premiums:
+    premium_sims_re_list_Market_cycle_stationary <- capitalPremiums_sims_list_L_cycle_stationary$Premiums_Re*market_share_input[market_share_input$Company == "Large", ]$Numbers + capitalPremiums_sims_list_M_cycle_stationary$Premiums_Re*market_share_input[market_share_input$Company == "Medium", ]$Numbers + capitalPremiums_sims_list_S_cycle_stationary$Premiums_Re*market_share_input[market_share_input$Company == "Small", ]$Numbers
+    ## Calculate the base reinsurance premiums:
+    premium_re_stationary_base_nominal <-  capitalPremiums_sims_list_L_cycle_stationary$Premiums_Re_Unadj*market_share_input[market_share_input$Company == "Large", ]$Numbers + capitalPremiums_sims_list_M_cycle_stationary$Premiums_Re_Unadj*market_share_input[market_share_input$Company == "Medium", ]$Numbers + capitalPremiums_sims_list_S_cycle_stationary$Premiums_Re_Unadj*market_share_input[market_share_input$Company == "Small", ]$Numbers
+    premium_re_stationary_base_norm <- premium_re_stationary_base_nominal
+```
+
+
+```{r}
+    premium_re_stationary_base_nominal * CPI_start/CPI_pred * Real_GDP_start/Real_GDP_pred
+```
+
+
+
+
+Adjust the surplus simulations to satisfy the capital constraint:
+
+- The surplus of general insurers are adjusted such that the surplus is set to zero the year after insolvency
+
+
+```{r Adjust the capitals by setting the equity level after default to be zero (with reinsurance cyle considered)}
+#capital_sims_list_Market_cycle_stationary
+capital_sims_list_Market_adj_cycle_stationary <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    for(i in 1:n.sims){
+        capital_sim <- capital_sims_list_Market_cycle_stationary[, i]
+        ## Find the index of the first time that the surplus turns to negative: 
+        first_negative_idx <- which(capital_sim <= 0)[1] 
+        ## Set all numbers after the first negative number to zero
+        if (!is.na(first_negative_idx) && first_negative_idx < length(capital_sim)) {
+          capital_sim[(first_negative_idx + 1):length(capital_sim)] <- 0
+        }
+    capital_sims_list_Market_adj_cycle_stationary[, i] <- capital_sim
+    }
+
+```
+
+
+Calculate the reinsurance market premium under the stationary setting: 
+
+
+```{r Calculate reinsurance market premium under the stationary case}
+## Define an empty matrix: --------
+premium_sims_re_list_Market_norm_cycle_stationary <- matrix(NA, nrow = nrow(premium_sims_re_list_Market_cycle_stationary), ncol = ncol(premium_sims_re_list_Market_cycle_stationary))
+#premium_sims_re_list_L_norm_cycle_stationary <- matrix(NA, nrow = nrow(premium_sims_re_list_Market_cycle_stationary), ncol = ncol(premium_sims_re_list_Market_cycle_stationary))
+## Adjust the reinsurnace premiums: ---------
+premium_sims_re_list_Market_norm_cycle_stationary <- premium_sims_re_list_Market_cycle_stationary * CPI_start/CPI_pred * Real_GDP_start/GDP_forecasts_stationary
+```
+
+
+
+Calculate the summary statistics for the adjusted primary insurers' market capitals under the stationary setting: 
+
+```{r Calculate the market statistics for the adjusted capital levels (with reinsurance cycle considered)}
+    ## Derive quantiles for market capital: 
+    market_capital_adj_quantiles_list_cycle_stationary <-  apply(capital_sims_list_Market_adj_cycle_stationary, MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.005, quantile_high = 0.995))
+    ## Derive median for market capital: 
+    market_capital_adj_median_cycle_stationary <- apply(capital_sims_list_Market_adj_cycle_stationary , MARGIN = 1, FUN = median)
+    ## Derive PD for market capital: 
+    market_capital_adj_default_cycle_stationary <- apply(capital_sims_list_Market_adj_cycle_stationary , MARGIN = 1, FUN = function(x) mean(x <= 0))
+
+```
+
+
+Calculate the summary statistics for the adjusted re-insurers' market premiums under the stationary setting:
+
+```{r Derive the reinsurance capital and premium statistics under stationary setting}
+## Define the lower abnd upper bounds of stats calculated:
+re_stats_lb <- 0.005
+re_stats_ub <- 0.995
+## Calculate the statistics:
+    ## Normalised:
+premium_re_quantiles_list_cycle_stationary_norm <- apply(premium_sims_re_list_Market_norm_cycle_stationary, MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = re_stats_lb, quantile_high = re_stats_ub))
+    ## CPI-adjusted:
+ #premium_re_quantiles_list_cycle_stationary_CPI_adj <- apply(premium_re_sims_list_Market_adj_all_scenarios_CPI_adj_cycle_stationary, MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = re_stats_lb, quantile_high = re_stats_ub))
+
+```
+
+
+```{r Calculate mean reinsurance premium under the stationary setting}
+Stationary_solvent_indicator <- capital_re_sims_list_Market_cycle_stationary > 0
+## Derive premium uplift under the solvent cases: 
+Premium_re_sims_stationary_solvent <- premium_sims_re_list_Market_cycle_stationary/Stationary_solvent_indicator 
+Premium_re_sims_stationary_solvent[is.infinite(Premium_re_sims_stationary_solvent) | is.nan(Premium_re_sims_stationary_solvent)] <- NA
+Premium_re_stationary_solvent_mean <- apply(Premium_re_sims_stationary_solvent, MARGIN = 1, FUN = function(x) mean(x, na.rm = T))
+```
+
+
+
+
+<!-- #### Investigation of abnormal stationary results:  -->
+
+<!-- Check the accuracy of solvency loading calculation by comparing with the simulated premium loading with the simulated solvency ratio path:  -->
+
+<!-- ```{r} -->
+<!-- premium_re_loadings_stationary_mat_test <- premium_sims_re_list_L_norm_cycle_stationary/reinsurance_premium_market_stationary - 1 -->
+<!-- max_loadings_stationary <- apply(premium_re_loadings_stationary_mat_test, MARGIN = 1, FUN = function(x) which.max(x)) -->
+<!-- #max_loadings_stationary -->
+<!-- premium_re_loadings_stationary_mat_test[, 847] -->
+<!-- capitalPremiums_sims_list_L_cycle_stationary$Sol_ratios[, 847] -->
+
+<!-- premium_S_func_alt(P_ref = 1, S_prev = 0, S_ref = 1, k1 = 0.667, floor_param = 1) -->
+<!-- plot(apply(capitalPremiums_sims_list_L_cycle_stationary$capital_loading, MARGIN = 1, FUN = mean), type = "l") -->
+<!-- plot(apply(capitalPremiums_sims_list_L_cycle_stationary$capital_loading, MARGIN = 1, FUN = max), type = "l") -->
+<!-- View(capitalPremiums_sims_list_L_cycle_stationary$capital_loading) -->
+<!-- # apply(premium_re_loadings_stationary_mat, MARGIN = 1, FUN = median) -->
+<!-- # apply(premium_re_loadings_stationary_mat, MARGIN = 1, FUN = mean) -->
+<!-- # apply(premium_re_loadings_stationary_mat, MARGIN = 1, FUN = max) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r Calculate the solvency ratios} -->
+
+<!-- apply(capitalPremiums_sims_list_L_cycle_stationary$Sol_ratios, MARGIN = 1, FUN = mean) -->
+
+<!-- premium_S_func_alt(P_ref = 1, S_prev = apply(capitalPremiums_sims_list_L_cycle_stationary$Sol_ratios, MARGIN = 1, FUN = mean), S_ref = 1, k1 = 0.667, floor_param = 1) -->
+
+<!-- premium_S_func_alt(P_ref = 1, S_prev = 0, S_ref = 1, k1 = 0.667, floor_param = 1) -->
+
+<!-- ``` -->
+
+
+<!-- ```{r Calculate mean premium statistics by excluding default case (stationary case)} -->
+<!-- ## Derive solvent indicators forStationary:  -->
+<!-- Stationary_solvent_indicator <- capitalPremiums_sims_list_L_cycle_stationary$Capital_sims_re > 0 -->
+<!-- apply(premium_sims_re_list_Market_norm_cycle_stationary/reinsurance_premium_market_stationary - 1, MARGIN = 1, FUN = max) -->
+<!-- ## Derive premium uplift under the solvent cases:  -->
+<!-- Premium_re_sims_stationary_solvent <- premium_sims_re_list_Market_norm_cycle_stationary/Stationary_solvent_indicator  -->
+<!-- Premium_re_sims_stationary_solvent[is.infinite(Premium_re_sims_stationary_solvent) | is.nan(Premium_re_sims_stationary_solvent)] <- NA -->
+<!-- Premium_re_stationary_solvent_mean <- apply(Premium_re_sims_stationary_solvent, MARGIN = 1, FUN = function(x) mean(x, na.rm = T)) -->
+<!-- plot(Premium_re_stationary_solvent_mean/reinsurance_premium_market_stationary - 1, type = "l") -->
+<!-- ``` -->
+
+
+
+<!-- Using the capital loading directly calcualted from the simulations yield consistent results:  -->
+
+<!-- ```{r} -->
+<!-- capitalPremiums_sims_list_L_cycle_stationary$capital_loading[, 847] -->
+<!-- ``` -->
+
+<!-- Similarly, using the nominal value of the premiums (and base premiums) yield sensible results:  -->
+
+<!-- ```{r} -->
+<!-- premium_sims_re_list_Market_cycle_stationary[, 847]/premium_re_stationary_base_nominal - 1 -->
+
+<!-- apply(premium_sims_re_list_Market_cycle_stationary/premium_re_stationary_base_nominal - 1, FUN = mean, MARGIN = 1) -->
+<!-- ``` -->
+
+
+
 
 ## Presentations of simulation results
 
 This section generates the plots shown in Section 3.2 in the paper. 
+
+```{r Define colour for the stationary plot}
+col_stat <- gray(0.5)
+```
+
 
 
 ### Section 3.2.1. Climate and hazards
@@ -4928,36 +6116,98 @@ for(s in 1:4){
 ```
 
 
+
+```{r Find the quantiles of simulated hazards under the stationary assumption}
+    ## Calculate the quantiles for event count: 
+    ## Flood: 
+   Flood_loss_stationary_quantiles_list <- apply(DFA_components_stationary$Hazard_module_sev$Flood, MARGIN = 1, FUN = function(x) multi_func(x)) 
+   ## Bushfire: 
+   Bushfire_loss_stationary_quantiles_list <- apply(DFA_components_stationary$Hazard_module_sev$Bushfire, MARGIN = 1, FUN = function(x) multi_func(x)) 
+   ## TC: 
+   TC_loss_stationary_quantiles_list <- apply(DFA_components_stationary$Hazard_module_sev$TC, MARGIN = 1, FUN = function(x) multi_func(x)) 
+   ## Storm: 
+   Storm_loss_stationary_quantiles_list <- apply(DFA_components_stationary$Hazard_module_sev$Storm, MARGIN = 1, FUN = function(x) multi_func(x)) 
+   ## ECL: 
+   ECL_loss_stationary_quantiles_list <- apply(DFA_components_stationary$Hazard_module_sev$ECL, MARGIN = 1, FUN = function(x) multi_func(x)) 
+   ## Hailstorm: 
+   Hailstorm_loss_stationary_quantiles_list <- apply(DFA_components_stationary$Hazard_module_sev$Hailstorm, MARGIN = 1, FUN = function(x) multi_func(x)) 
+
+```
+
 Plot of simulation results for hazard losses:
 
-- This generates Figure 3.2 shown in the paper.
+- This generates Figure 3.2 shown in the paper. 
+
+
 
 ```{r Plot of simulation results for hazard losses}
-#pdf("Plotting/Hazards/Simulations_individual_hazard_losses.pdf")
+pdf("Plotting/Hazards/Simulations_individual_hazard_losses.pdf")
 par(mfrow = c(3, 2))
 horizon <- 38
 #y_range_hazard_sev <- c(0,1.4e10)
 par(mar = c(2.4, 2.4, 2.4, 1), mgp = c(1.5, 0.5, 0))
 ## Flood
 plot_quantiles_scenario(Flood_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Flood losses (normalised)", y_range = c(0, 2.5e10), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.8, lty = c(1,1,1,1), lwd = rep(2, 4))
+## Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), Flood_loss_stationary_quantiles_list[2, 1:horizon], col = col_stat, lwd = 2, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), Flood_loss_stationary_quantiles_list[1, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), Flood_loss_stationary_quantiles_list[3, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(Flood_loss_stationary_quantiles_list[1, 1:horizon], rev(Flood_loss_stationary_quantiles_list[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
+### Plot the legends --------------
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 0.8, lty = c(3,1,1,1,1), lwd = rep(2, 4))
 
 ## Bushfire
 plot_quantiles_scenario(Bushfire_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Bushfires losses (normalised)", y_range = c(0, 3e9), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
-#legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
+## Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), Bushfire_loss_stationary_quantiles_list[2, 1:horizon], col = col_stat, lwd = 2, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), Bushfire_loss_stationary_quantiles_list[1, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), Bushfire_loss_stationary_quantiles_list[3, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(Bushfire_loss_stationary_quantiles_list[1, 1:horizon], rev(Bushfire_loss_stationary_quantiles_list[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
 ## TC
 plot_quantiles_scenario(TC_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Tropical cyclones losses (normalised)", y_range = c(0, 1.8e10), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
 #legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
+## Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), TC_loss_stationary_quantiles_list[2, 1:horizon], col = col_stat, lwd = 2, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), TC_loss_stationary_quantiles_list[1, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), TC_loss_stationary_quantiles_list[3, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(TC_loss_stationary_quantiles_list[1, 1:horizon], rev(TC_loss_stationary_quantiles_list[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
 ## Storm
 plot_quantiles_scenario(Storm_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Storm losses (normalised)", y_range = c(0, 1.8e9), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
 #legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
+## Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), Storm_loss_stationary_quantiles_list[2, 1:horizon], col = col_stat, lwd = 2, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), Storm_loss_stationary_quantiles_list[1, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), Storm_loss_stationary_quantiles_list[3, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(Storm_loss_stationary_quantiles_list[1, 1:horizon], rev(Storm_loss_stationary_quantiles_list[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
 ## ECL
 plot_quantiles_scenario(ECL_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "East Coast Lows losses (normalised)", y_range = c(0, 9e8), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
 #legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
+## Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), ECL_loss_stationary_quantiles_list[2, 1:horizon], col = col_stat, lwd = 2, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), ECL_loss_stationary_quantiles_list[1, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), ECL_loss_stationary_quantiles_list[3, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(ECL_loss_stationary_quantiles_list[1, 1:horizon], rev(ECL_loss_stationary_quantiles_list[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
 ## Hailstorms
 plot_quantiles_scenario(Hailstorm_loss_quantiles_list , forecast_periods = start_year:(start_year+horizon - 1), var_name = "Values", main = "Hailstorm losses (normalised)", y_range = c(0, 2.5e9), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F)
+## Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), Hailstorm_loss_stationary_quantiles_list[2, 1:horizon], col = col_stat, lwd = 2, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), Hailstorm_loss_stationary_quantiles_list[1, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), Hailstorm_loss_stationary_quantiles_list[3, 1:horizon], col = col_stat, lwd = 1.5, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(Hailstorm_loss_stationary_quantiles_list[1, 1:horizon], rev(Hailstorm_loss_stationary_quantiles_list[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
 #legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.6, lty = c(1,1,1,1))
-#dev.off()
+dev.off()
 ```
 
 
@@ -5107,6 +6357,8 @@ log_consumption_growth_cum_all_scenarios_list[[s]] <- log_consumption_growth_cum
 }
 ```
 
+
+
 ```{r Derive the cumulative economic growth and adjusted growth}
 gdp_potential_growth_mat <- matrix(NA, nrow = forecast_horizon, ncol = 4)
 log_gdp_potential_cum_growth_mat <- matrix(NA, nrow = forecast_horizon, ncol = 4)
@@ -5170,6 +6422,26 @@ for(s in 1:4){
 ```
 
 
+```{r Calculate cumulative investment returns under the stationary case}
+## Calculate the simulated cumulative investment returns: -------------
+log_investment_returns_nominal_cum_stationary  <- matrix(NA, nrow = forecast_horizon, ncol = n.sims)
+    for(i in 1:n.sims){
+         Short_rates_nominal <- DFA_components_stationary$MEV_module$Nominal_rates[, i]
+         ## Get the excess equity return:
+         equity_return_excess <- rnorm(forecast_horizon, mean = mu_TR_stationary, sd = sigma_TR_stationary)
+         #### Get the nominal equity return: 
+         equity_return_nominal <- pmax(equity_return_excess + Short_rates_nominal, -1)
+         ## Get the total returns:
+         investment_return_nominal <- Risk_free_weight_default*Short_rates_nominal + (1-Risk_free_weight_default)*equity_return_nominal
+         ## Get the cumulative real and nominal investment returns:
+         log_investment_returns_nominal_cum_stationary[, i] <- log(cumprod(1 + investment_return_nominal))
+    }
+
+## Calculate the quantile statistics for the cumulative investment returns: -------
+log_investment_returns_nominal_cum_stationary_quantiles <- apply(log_investment_returns_nominal_cum_stationary,  MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+```
+
+
 Plot the mean and the uncertainty range of log-sale of cumulative investment returns:
 
 - This generates Figure 3.3 shown in the paper. 
@@ -5179,7 +6451,15 @@ Plot the mean and the uncertainty range of log-sale of cumulative investment ret
 horizon <- 38
 #pdf("Plotting/Asset/Simulations_cum_investment_returns_2060.pdf")
 plot_quantiles_scenario(log_investment_returns_nominal_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Cumulative returns (log)", main = "Cumulative investment returns (log-scale)", y_range = c(-0.2, 5), colour_list = col_list, horizon = horizon , transparency = 0.1, label_percents = F, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, mean_lwd = 4, quantiles_lwd = 2)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 1, lty = c(3,1,1,1,1), lwd = rep(4, 4))
+
+# Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), log_investment_returns_nominal_cum_stationary_quantiles[2, 1:horizon], col = col_stat, lwd = 4, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), log_investment_returns_nominal_cum_stationary_quantiles[1, 1:horizon], col = col_stat, lwd = 2, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), log_investment_returns_nominal_cum_stationary_quantiles[3, 1:horizon], col = col_stat, lwd = 2, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(log_investment_returns_nominal_cum_stationary_quantiles[1, 1:horizon], rev(log_investment_returns_nominal_cum_stationary_quantiles[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
 #dev.off()
 ```
 
@@ -5394,11 +6674,12 @@ horizon <- 38
 
 #pdf("Plotting/Premiums/Gross_CAT_premiums_normalised_2060.pdf")
 ## Plot the gross CAT premiums:
-plot(x = start_year_proj:(start_year_proj + horizon - 1), y = gross_premium_CAT_norm_mat[1:horizon, 1], type = "l", col = col_list[1], xlab = "Years", ylab = "Premiums", main = "Gross CAT premiums (normalised)", ylim = c(4e9, 9e9), cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
+plot(x = start_year_proj:(start_year_proj + horizon - 1), y = gross_premium_CAT_norm_mat[1:horizon, 1], type = "l", col = col_list[1], xlab = "Years", ylab = "Premiums", main = "Gross CAT premiums (normalised)", ylim = c(3e9, 9e9), cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
 for(s in 2:4){
     points(x = start_year_proj:(start_year_proj + horizon - 1), y = gross_premium_CAT_norm_mat[1:horizon, s], type = "l", col = col_list[s], lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+abline(h = gross_premium_CAT_norm_stationary, col = col_stat, lwd = 4, lty = 3)
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 1, lty = c(3,1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 ```
 
@@ -5425,14 +6706,19 @@ Plot the normalised reinsurance premiums and the relative change:
 
 - This generates Figure 3.9 to Figure 3.11 in Section 3.2.3.
 
+
+
+
 ```{r Plot of reinsurance premiums (with cyclical effects considered)}
 #pdf("Plotting/Premiums/Reinsurance_premiums_soladj_proj_2060_mean.pdf")
 horizon <- 38
-plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon], type = "l", col = col_list[1], ylim = c(5e8, 2.5e9), xlab = "Years", ylab = "Reinsurance premium", main = "Reinsurance premiums (normalised; mean)", cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
+plot(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[1]][2, 1:horizon], type = "l", col = col_list[1], ylim = c(4.5e8, 2.5e9), xlab = "Years", ylab = "Reinsurance premium", main = "Reinsurance premiums (normalised; mean)", cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, lwd = 4)
 for(s in 2:4){
     points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][2, 1:horizon], type = "l", col = col_list[s], lty = 1, lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.8, lty = c(1,1,1,1), lwd = rep(4, 4))
+
+points(x = start_year:(start_year+horizon - 1), y = reinsurance_premium_market_stationary*Premium_re_stationary_solvent_mean[1:horizon]/premium_re_stationary_base_nominal[1:horizon], col = col_stat, type = "l", lwd = 4, lty = 3)
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 0.8, lty =c(3, rep(1, 4)), lwd = rep(4, 4))
 #dev.off()
 ```
 
@@ -5449,9 +6735,11 @@ axis(2, at = seq(0, 1.1, by = 0.2), labels = paste0(seq(0, 1, by = 0.2) * 100, '
 for(s in 2:4){
     points(x = start_year:(start_year+horizon - 1), y = premium_re_quantiles_list_cycle_norm[[s]][2, 1:horizon]/premium_re_all_scanarios_base_norm_mat[1:horizon, s] - 1, type = "l", col = col_list[s], lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(3, 4))
+points(x = start_year:(start_year+horizon - 1), y = Premium_re_stationary_solvent_mean[1:horizon]/premium_re_stationary_base_nominal[1:horizon] - 1, type = "l", col = col_stat, lwd = 4, lty = 3)
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 1, lty = c(3, 1,1,1,1), lwd = rep(3, 4))
 #dev.off()
 ```
+
 
 
 
@@ -5502,16 +6790,43 @@ for(s in 1:4){
 ```
 
 
+```{r Calculate underwriting loss under the stationary case}
+## Calculate reinsurance recoveries for each company under the stationary assumption:------
+    re_calc_stationary_L <- calc_reinsurance_recoveries_norm_stationary(horizon = 78, market_cap = market_share_input[market_share_input$Company == "Large", ]$Market_shares, reinsurance_excess = excess_default_Large, reinsurance_limit_multiple = limit_default_large/excess_default_Large, DFA_list = DFA_components_stationary)
+
+    re_calc_stationary_M <- calc_reinsurance_recoveries_norm_stationary(horizon = 78, market_cap = market_share_input[market_share_input$Company == "Medium", ]$Market_shares,  reinsurance_excess = excess_default_Medium, reinsurance_limit_multiple = limit_default_Medium/excess_default_Medium, DFA_list = DFA_components_stationary)
+    
+    re_calc_stationary_S <- calc_reinsurance_recoveries_norm_stationary(horizon = 78, market_cap = market_share_input[market_share_input$Company == "Small", ]$Market_shares,  reinsurance_excess = excess_default_Small, reinsurance_limit_multiple = limit_default_Small/excess_default_Small, DFA_list = DFA_components_stationary)
+    
+    ## Calculate reinsurance recoveries for the whole market: ------------------------
+    CAT_net_losses_market_stationary_mat <- re_calc_stationary_L$CAT_loss_net * market_share_input[market_share_input$Company == "Large", ]$Numbers + re_calc_stationary_M$CAT_loss_net * market_share_input[market_share_input$Company == "Medium", ]$Numbers + re_calc_stationary_S$CAT_loss_net * market_share_input[market_share_input$Company == "Small", ]$Numbers
+
+# ## Calculate underwriting loss under the stationary case: ---------------- 
+    
+UL_losses_market_stationary_mat <- CAT_net_losses_market_stationary_mat - c(gross_premium_CAT_norm_stationary - reinsurance_premium_market_stationary)
+
+UL_losses_market_stationary_quantiles_list <- apply(UL_losses_market_stationary_mat, MARGIN = 1, FUN = function(x) multi_func(x, quantile_low = 0.05, quantile_high = 0.95))
+```
+
 
 
 
 ```{r Plot the quantile range of the simulated underwritting losses, fig.height = 3}
-#pdf("Plotting/Liabilities/Simulations_underwritinglosses.pdf")
+pdf("Plotting/Liabilities/Simulations_underwritinglosses.pdf")
 horizon <- 38
 plot_quantiles_scenario(UL_losses_market_quantiles_all_scenarios_list, forecast_periods = start_year:(start_year+ horizon - 1), var_name = "Underwriting losses", main = "Simulated underwriting losses (normalised)", y_range = c(-6e9, 2.3e10), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5, mean_lwd = 4, quantiles_lwd = 3)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+
+## Add quantiles for stationary case:----------------
+        lines(start_year:(start_year+horizon - 1), UL_losses_market_stationary_quantiles_list[2, 1:horizon], col = col_stat, lwd = 4, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), UL_losses_market_stationary_quantiles_list[1, 1:horizon], col = col_stat, lwd = 3, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), UL_losses_market_stationary_quantiles_list[3, 1:horizon], col = col_stat, lwd = 3, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(UL_losses_market_stationary_quantiles_list[1, 1:horizon], rev(UL_losses_market_stationary_quantiles_list[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
+
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 1, lty = c(3, 1,1,1,1), lwd = rep(4, 4))
 abline(h = 0, lty = 6)
-#dev.off()
+dev.off()
 ```
 
 
@@ -5530,22 +6845,29 @@ Plot the expected and median market surplus (log-scale):
 ## Plot of median surplus (with reinsurance): 
 #pdf("Plotting/Surplus/Median_market_surplus_re_cycle.pdf")
 horizon <- 38
-plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle[1:horizon, 1]), col = col_list[1], type = "l", xlab = "Years", ylab = "Median surplus", main = "Median market surplus (log-scale)", ylim = c(25, 32), lwd = 4, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
+plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle[1:horizon, 1]), col = col_list[1], type = "l", xlab = "Years", ylab = "Median surplus", main = "Median market surplus (log-scale)", ylim = c(23, 32), lwd = 4, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
 for(s in 2:4){
     points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle[1:horizon, s]), col = col_list[s], type = "l", lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+## Add the stationary case: ----------------
+points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_median_cycle_stationary[1:horizon]), lwd = 4, type = "l", col = col_stat, lty = 3)
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 1, lty = c(3, 1,1,1,1), lwd = rep(4, 4))
 #dev.off()
 
 ## Plot of mean surplus (with reinsurance): 
 #pdf("Plotting/Surplus/Mean_market_surplus_re_cycle.pdf")
-plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[1]][2, 1:horizon]), col = col_list[1], type = "l", xlab = "Years", ylab = "Mean surplus", main = "Mean market surplus (log-scale)", ylim = c(25, 32), lwd = 4, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
+plot(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[1]][2, 1:horizon]), col = col_list[1], type = "l", xlab = "Years", ylab = "Mean surplus", main = "Mean market surplus (log-scale)", ylim = c(23, 32), lwd = 4, cex.main = 1.5, cex.lab = 1.5, cex.axis = 1.5)
 for(s in 2:4){
     points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle[[s]][2, 1:horizon]), col = col_list[s], type = "l", , lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
-#dev.off()
+## Add the stationary case: ----------------
+points(x = start_year:(start_year + horizon - 1), y = log(market_capital_adj_quantiles_list_cycle_stationary[2, 1:horizon]), lwd = 4, type = "l", lty = 3, col = col_stat)
+
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 1, lty = c(3, 1,1,1,1), lwd = rep(4, 4))
+dev.off()
 ```
+
+
 
 Plot the market surplus (log-scale) over the log-scale cumulative investment returns:
 
@@ -5599,10 +6921,12 @@ plot(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_c
 for(s in 2:4){
     points(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle[1:horizon, s], col = col_list[s], type = "l", lwd = 4)
 }
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 1, lty = c(1,1,1,1), lwd = rep(4, 4))
+points(x = start_year:(start_year + horizon - 1), y = market_capital_adj_default_cycle_stationary[1:horizon], type = "l", lwd = 4, lty = 3, col = col_stat)
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 1, lty = c(3,1,1,1,1), lwd = rep(4, 5))
 #dev.off()
 ```
 
+`
 
 
 Calculate and plot the market deficit given insolvency ratios:
@@ -5643,15 +6967,52 @@ LGD_all_sims_list_cycle[[s]] <- LGD_all_list
 ```
 
 
+```{r Calculte the LGD ratios for adjusted capital levels (with reinsurance cycle considered) under the stationary case}
+## Create empty matries to store LGD ratios:
+LGD_ratios_lower_quant_stationary <- c()
+LGD_ratios_mean_stationary <- c()
+LGD_ratios_upper_quant_stationary <- c()
+ 
+for(i in 1:forecast_horizon){
+        ## Calculate the dollar values of loss-at-insolvency: 
+        Loss <- pmax(-capital_sims_list_Market_adj_cycle_stationary[i, ], 0)
+        Loss_at_default <- Loss[which(Loss > 0)]
+        ## Derive the total insurance claims liabilities payable to policyholders:
+        Exposure_total_Liab <- DFA_components_stationary$Liabilities_module$Non_CAT_loss_nominal[i, ] + DFA_components_stationary$Liabilities_module$Non_CAT_other_loss_nominal[i, ] + CAT_net_losses_market_stationary_mat[i, ]
+        ## Derive the Exposure At Default: 
+        EAD <- Exposure_total_Liab[which(Loss > 0)]
+        ## Calculate the average LGD ratios:
+        LGD_ratios <- pmin(Loss_at_default/EAD, 1)
+        ## Store the outputs for LGD ratios
+        LGD_ratios_mean_stationary[i] <- mean(LGD_ratios)
+        LGD_ratios_lower_quant_stationary[i] <- quantile(LGD_ratios, 0.05)
+        LGD_ratios_upper_quant_stationary[i] <- quantile(LGD_ratios, 0.95)
+        
+}
+LGD_quantiles_stationary_list_ratios_adj_cycle <- rbind(LGD_ratios_lower_quant_stationary, LGD_ratios_mean_stationary, LGD_ratios_upper_quant_stationary)
+LGD_quantiles_stationary_list_ratios_adj_cycle[is.na(LGD_quantiles_stationary_list_ratios_adj_cycle)] <- 0
+```
+
+
 
 ```{r Plot of loss given insolvency ratios (with reinsurance cycle considered)}
 #pdf("Plotting/Surplus/Market_deficit_given_insolvency_cycle.pdf")
 horizon <- 50
 plot_quantiles_scenario(LGD_quantiles_all_scenarios_list_ratios_adj_cycle, forecast_periods = start_year:(start_year + horizon - 1), var_name = "Deficit given insolvency", main = "Market deficit given insolvency (ratios)", y_range = c(0, 1), colour_list = col_list, horizon = horizon, transparency = 0.1, label_percents = F, cex.main.choice = 1.5, cex.lab.choice = 1.5, cex.axis.choice = 1.5, xlab.name = "Years", mean_lwd = 4, quantiles_lwd = 3)
-legend("topleft", legend = c("SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = col_list, cex = 0.9, lty = c(1,1,1,1), lwd = rep(4, 4))
+## Plot the results under the stationary case: -------
+lines(start_year:(start_year+horizon - 1), LGD_quantiles_stationary_list_ratios_adj_cycle[2, 1:horizon], col = col_stat, lwd = 4, lty = 3) # 50% quantile (median)
+        lines(start_year:(start_year+horizon - 1), LGD_quantiles_stationary_list_ratios_adj_cycle[1, 1:horizon], col = col_stat, lwd = 3, lty = 2) # Lower quantile
+        lines(start_year:(start_year+horizon - 1), LGD_quantiles_stationary_list_ratios_adj_cycle[3, 1:horizon], col = col_stat, lwd = 3, lty = 2) # Upper quantile
+polygon(c(start_year:(start_year+horizon - 1), rev(start_year:(start_year+horizon - 1))), 
+                c(LGD_quantiles_stationary_list_ratios_adj_cycle[1, 1:horizon], rev(LGD_quantiles_stationary_list_ratios_adj_cycle[3, 1:horizon])), 
+                col = alpha(1, 0.1), border = NA) 
+## Plot the legend: ----------
+legend("topleft", legend = c("Stationary","SSP 2.6", "SSP 4.5", "SSP 7.0", "SSP 8.5"), col = c(col_stat, col_list), cex = 0.9, lty = c(3, 1,1,1,1), lwd = rep(4, 5))
 
 #dev.off()
 ```
+
+
 
 
 Calculation and the plot of mean CAGR:
